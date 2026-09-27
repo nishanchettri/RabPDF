@@ -1,0 +1,836 @@
+import io
+import os
+import sys
+import tempfile
+import threading
+import tkinter as tk
+from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
+
+from PIL import Image, ImageSequence, ImageTk
+
+
+APP_NAME = "RabPDF"
+APP_VERSION = "1.1.0"
+APP_AUTHORS = "Nishan Chettri + ChatGPT"
+ACCENT = "#1264e8"
+ACCENT_DARK = "#0b4fc2"
+ACCENT_SOFT = "#eaf2ff"
+BG = "#f4f7fb"
+PANEL = "#ffffff"
+TEXT = "#172033"
+MUTED = "#62708a"
+SIDEBAR = "#0b1f3a"
+SIDEBAR_ACTIVE = "#163b70"
+if getattr(sys, "frozen", False):
+    ASSET_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+else:
+    ASSET_DIR = Path(__file__).resolve().parents[1] / "assets"
+
+
+TOOLS = {
+    "merge": ("Merge PDF", "Combine PDF files in the chosen order", "Organize"),
+    "split": ("Split PDF", "Save every page or selected page ranges", "Organize"),
+    "extract": ("Extract pages", "Create a new PDF from selected pages", "Organize"),
+    "remove": ("Remove pages", "Delete selected pages from a PDF", "Organize"),
+    "rotate": ("Rotate PDF", "Rotate all or selected pages", "Organize"),
+    "compress": ("Compress PDF", "Reduce file size with Ghostscript", "Optimize"),
+    "protect": ("Protect PDF", "Add an open password and permissions", "Security"),
+    "unlock": ("Unlock PDF", "Remove password protection you are authorized to remove", "Security"),
+    "images_to_pdf": ("Images to PDF", "Combine PNG, JPG, TIFF, or BMP images", "Convert"),
+    "pdf_to_images": ("PDF to images", "Render PDF pages as PNG or JPG", "Convert"),
+    "text": ("Extract text", "Save searchable PDF text as a UTF-8 file", "Convert"),
+    "images": ("Extract images", "Save embedded images without rendering pages", "Convert"),
+    "watermark": ("Watermark", "Add text across all or selected pages", "Annotate"),
+    "numbers": ("Page numbers", "Stamp page numbers in a chosen position", "Annotate"),
+    "metadata": ("Edit metadata", "Set title, author, subject, and keywords", "Annotate"),
+}
+
+
+def human_size(size):
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{int(value)} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+
+
+def default_output(source, suffix, extension=".pdf"):
+    path = Path(source)
+    return str(path.with_name(f"{path.stem}_{suffix}{extension}"))
+
+
+def parse_pages(spec, total, allow_empty=False):
+    """Parse 1-based page selections such as '1,3,5-8'."""
+    if not spec.strip():
+        return list(range(total)) if allow_empty else []
+    pages = []
+    for part in spec.replace(" ", "").split(","):
+        if not part:
+            continue
+        if "-" in part:
+            bits = part.split("-", 1)
+            start = int(bits[0])
+            end = int(bits[1])
+            if start > end:
+                raise ValueError(f"Invalid descending range: {part}")
+            pages.extend(range(start - 1, end))
+        else:
+            pages.append(int(part) - 1)
+    if not pages:
+        raise ValueError("Enter at least one page number.")
+    bad = [page + 1 for page in pages if page < 0 or page >= total]
+    if bad:
+        raise ValueError(f"Page {bad[0]} is outside this PDF (1-{total}).")
+    return list(dict.fromkeys(pages))
+
+
+def parse_ranges(spec, total):
+    if not spec.strip():
+        return [[i] for i in range(total)]
+    groups = []
+    for group in spec.split(","):
+        groups.append(parse_pages(group.strip(), total))
+    return groups
+
+
+def require_pdf_libs():
+    try:
+        import pypdf  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "The PDF engine is missing. Run install_dependencies.bat, then restart the app."
+        ) from exc
+
+
+class ScrollFrame(ttk.Frame):
+    def __init__(self, master):
+        super().__init__(master)
+        self.canvas = tk.Canvas(self, highlightthickness=0, background=BG)
+        bar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.body = ttk.Frame(self.canvas)
+        self.window = self.canvas.create_window((0, 0), window=self.body, anchor="nw")
+        self.canvas.configure(yscrollcommand=bar.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        bar.pack(side="right", fill="y")
+        self.body.bind("<Configure>", lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self.window, width=e.width))
+
+
+class PDFStudio(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title(f"{APP_NAME} - All-in-one PDF tools")
+        self.geometry("1100x720")
+        self.minsize(900, 620)
+        self.current_tool = "merge"
+        self.files = []
+        self.busy = False
+        self.vars = {}
+        self.tool_buttons = {}
+        self.logo_image = None
+        self.logo_frames = []
+        self.logo_durations = []
+        self.logo_index = 0
+        self.logo_label = None
+        self.icon_image = None
+        self._load_brand_assets()
+        self._style()
+        self._layout()
+        self._animate_logo()
+        self.show_tool("merge")
+
+    def _load_brand_assets(self):
+        animation_path = ASSET_DIR / "rabpdf_mascot_animated.gif"
+        logo_path = ASSET_DIR / "rabpdf_logo_72.png"
+        icon_path = ASSET_DIR / "rabpdf_logo_32.png"
+        try:
+            if animation_path.exists():
+                with Image.open(animation_path) as animation:
+                    for frame in ImageSequence.Iterator(animation):
+                        self.logo_frames.append(ImageTk.PhotoImage(frame.convert("RGBA")))
+                        self.logo_durations.append(max(40, int(frame.info.get("duration", 65))))
+            if self.logo_frames:
+                self.logo_image = self.logo_frames[0]
+            else:
+                self.logo_image = tk.PhotoImage(file=str(logo_path))
+            self.icon_image = tk.PhotoImage(file=str(icon_path))
+            self.iconphoto(True, self.icon_image)
+        except (OSError, tk.TclError):
+            self.logo_image = None
+            self.logo_frames = []
+            self.logo_durations = []
+            self.icon_image = None
+        ico_path = ASSET_DIR / "rabpdf_icon.ico"
+        if ico_path.exists():
+            try:
+                self.iconbitmap(str(ico_path))
+            except tk.TclError:
+                pass
+
+    def _animate_logo(self):
+        if not self.logo_frames or self.logo_label is None:
+            return
+        self.logo_image = self.logo_frames[self.logo_index]
+        self.logo_label.configure(image=self.logo_image)
+        delay = self.logo_durations[self.logo_index]
+        self.logo_index = (self.logo_index + 1) % len(self.logo_frames)
+        self.after(delay, self._animate_logo)
+
+    def _style(self):
+        self.configure(bg=BG)
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure("TFrame", background=BG)
+        style.configure("Panel.TFrame", background=PANEL)
+        style.configure("TLabel", background=BG, foreground=TEXT, font=("Segoe UI", 10))
+        style.configure("Panel.TLabel", background=PANEL, foreground=TEXT, font=("Segoe UI", 10))
+        style.configure("Title.TLabel", background=BG, foreground=TEXT, font=("Segoe UI Semibold", 22))
+        style.configure("Subtitle.TLabel", background=BG, foreground=MUTED, font=("Segoe UI", 10))
+        style.configure("Section.TLabel", background=PANEL, foreground=TEXT, font=("Segoe UI Semibold", 11))
+        style.configure("Accent.TButton", background=ACCENT, foreground="white", font=("Segoe UI Semibold", 10), padding=(16, 10), borderwidth=0)
+        style.map("Accent.TButton", background=[("active", ACCENT_DARK), ("disabled", "#9bbcf0")])
+        style.configure("TButton", font=("Segoe UI", 9), padding=(10, 7))
+        style.configure("TEntry", padding=7)
+        style.configure("TCombobox", padding=6)
+        style.configure("Horizontal.TProgressbar", background=ACCENT, troughcolor=ACCENT_SOFT)
+
+    def _layout(self):
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self._sidebar()
+
+        content = ttk.Frame(self, padding=(28, 22))
+        content.grid(row=0, column=1, sticky="nsew")
+        content.columnconfigure(0, weight=1)
+        content.rowconfigure(2, weight=1)
+
+        self.title_var = tk.StringVar()
+        self.desc_var = tk.StringVar()
+        ttk.Label(content, textvariable=self.title_var, style="Title.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(content, textvariable=self.desc_var, style="Subtitle.TLabel").grid(row=1, column=0, sticky="w", pady=(3, 16))
+
+        self.scroller = ScrollFrame(content)
+        self.scroller.grid(row=2, column=0, sticky="nsew")
+        self.scroller.body.columnconfigure(0, weight=1)
+
+        footer = ttk.Frame(content)
+        footer.grid(row=3, column=0, sticky="ew", pady=(14, 0))
+        footer.columnconfigure(0, weight=1)
+        self.status_var = tk.StringVar(value="Ready")
+        ttk.Label(footer, textvariable=self.status_var, style="Subtitle.TLabel").grid(row=0, column=0, sticky="w")
+        self.progress = ttk.Progressbar(footer, mode="indeterminate", length=160)
+        self.progress.grid(row=0, column=1, padx=(16, 0))
+
+    def _sidebar(self):
+        side = tk.Frame(self, bg=SIDEBAR, width=230)
+        side.grid(row=0, column=0, sticky="nsw")
+        side.grid_propagate(False)
+        brand = tk.Frame(side, bg=SIDEBAR)
+        brand.pack(fill="x", padx=16, pady=(16, 12))
+        if self.logo_image:
+            self.logo_label = tk.Label(brand, image=self.logo_image, bg=SIDEBAR, bd=0)
+            self.logo_label.pack(side="left")
+        wordmark = tk.Frame(brand, bg=SIDEBAR)
+        wordmark.pack(side="left", padx=(10, 0))
+        tk.Label(wordmark, text="RabPDF", bg=SIDEBAR, fg="white", font=("Segoe UI Semibold", 19)).pack(anchor="w")
+        tk.Label(wordmark, text="PDF TOOLBOX", bg=SIDEBAR, fg="#86b6ff", font=("Segoe UI Semibold", 8)).pack(anchor="w")
+        groups = ("Organize", "Optimize", "Security", "Convert", "Annotate")
+        for group in groups:
+            tk.Label(side, text=group.upper(), bg=SIDEBAR, fg="#9ca3af", font=("Segoe UI Semibold", 8)).pack(anchor="w", padx=20, pady=(10, 4))
+            for key, (name, _desc, category) in TOOLS.items():
+                if category != group:
+                    continue
+                button = tk.Button(
+                    side, text=name, anchor="w", relief="flat", bd=0, cursor="hand2",
+                    bg=SIDEBAR, fg="#dbeafe", activebackground=SIDEBAR_ACTIVE, activeforeground="white",
+                    font=("Segoe UI", 9), padx=20, pady=6, command=lambda k=key: self.show_tool(k)
+                )
+                button.pack(fill="x")
+                self.tool_buttons[key] = button
+        footer = tk.Frame(side, bg=SIDEBAR)
+        footer.pack(side="bottom", fill="x", padx=16, pady=(8, 14))
+        tk.Frame(footer, bg="#24466f", height=1).pack(fill="x", pady=(0, 10))
+        tk.Button(
+            footer, text="About RabPDF", anchor="w", relief="flat", bd=0,
+            cursor="hand2", bg=SIDEBAR, fg="#bfdbfe",
+            activebackground=SIDEBAR_ACTIVE, activeforeground="white",
+            font=("Segoe UI", 8), padx=0, pady=2, command=self.show_about,
+        ).pack(fill="x")
+        tk.Label(
+            footer, text="Nishan Chettri + ChatGPT", bg=SIDEBAR,
+            fg="#7894b8", font=("Segoe UI", 7),
+        ).pack(anchor="w", pady=(2, 0))
+        tk.Label(
+            footer, text=f"Version {APP_VERSION}", bg=SIDEBAR,
+            fg="#607a9c", font=("Segoe UI", 7),
+        ).pack(anchor="w")
+
+    def show_about(self):
+        about = tk.Toplevel(self)
+        about.title(f"About {APP_NAME}")
+        about.geometry("420x310")
+        about.resizable(False, False)
+        about.transient(self)
+        about.grab_set()
+        about.configure(bg=PANEL)
+
+        if self.logo_frames:
+            tk.Label(about, image=self.logo_frames[0], bg=PANEL, bd=0).pack(pady=(24, 8))
+        tk.Label(
+            about, text=APP_NAME, bg=PANEL, fg=TEXT,
+            font=("Segoe UI Semibold", 22),
+        ).pack()
+        tk.Label(
+            about, text="A private, local PDF toolbox", bg=PANEL, fg=MUTED,
+            font=("Segoe UI", 9),
+        ).pack(pady=(2, 16))
+        tk.Label(
+            about, text="Created by", bg=PANEL, fg=MUTED,
+            font=("Segoe UI", 8),
+        ).pack()
+        tk.Label(
+            about, text=APP_AUTHORS, bg=PANEL, fg=ACCENT,
+            font=("Segoe UI Semibold", 11),
+        ).pack(pady=(2, 10))
+        tk.Label(
+            about, text=f"Version {APP_VERSION}", bg=PANEL, fg=MUTED,
+            font=("Segoe UI", 8),
+        ).pack()
+        ttk.Button(about, text="Close", command=about.destroy).pack(pady=(18, 0))
+        about.protocol("WM_DELETE_WINDOW", about.destroy)
+
+    def show_tool(self, key):
+        if self.busy:
+            return
+        self.current_tool = key
+        self.files = []
+        for child in self.scroller.body.winfo_children():
+            child.destroy()
+        for name, button in self.tool_buttons.items():
+            button.configure(bg=SIDEBAR_ACTIVE if name == key else SIDEBAR, fg="white" if name == key else "#dbeafe")
+        title, desc, _group = TOOLS[key]
+        self.title_var.set(title)
+        self.desc_var.set(desc)
+        self.status_var.set("Ready")
+        self.vars = {}
+        self._build_tool(key)
+
+    def var(self, name, value=""):
+        self.vars[name] = tk.StringVar(value=value)
+        return self.vars[name]
+
+    def _panel(self, row, title):
+        frame = ttk.Frame(self.scroller.body, style="Panel.TFrame", padding=18)
+        frame.grid(row=row, column=0, sticky="ew", pady=(0, 12))
+        frame.columnconfigure(0, weight=1)
+        ttk.Label(frame, text=title, style="Section.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 12))
+        return frame
+
+    def _build_tool(self, key):
+        multiple = key in ("merge", "images_to_pdf")
+        input_title = "Files" if multiple else "Input file"
+        panel = self._panel(0, input_title)
+        self.file_list = tk.Listbox(panel, height=5 if multiple else 3, relief="solid", bd=1, selectmode=tk.EXTENDED, font=("Segoe UI", 9))
+        self.file_list.grid(row=1, column=0, columnspan=4, sticky="ew")
+        label = "Add files" if multiple else "Choose file"
+        ttk.Button(panel, text=label, command=lambda: self.choose_files(multiple)).grid(row=2, column=0, sticky="w", pady=(10, 0))
+        if multiple:
+            ttk.Button(panel, text="Move up", command=lambda: self.move_file(-1)).grid(row=2, column=1, pady=(10, 0), padx=5)
+            ttk.Button(panel, text="Move down", command=lambda: self.move_file(1)).grid(row=2, column=2, pady=(10, 0), padx=5)
+        ttk.Button(panel, text="Remove", command=self.remove_files).grid(row=2, column=3, sticky="e", pady=(10, 0))
+
+        options = self._panel(1, "Options")
+        options.columnconfigure(1, weight=1)
+        self._tool_options(options, key)
+
+        output = self._panel(2, "Output")
+        output.columnconfigure(0, weight=1)
+        self.output_var = self.var("output")
+        ttk.Entry(output, textvariable=self.output_var).grid(row=1, column=0, sticky="ew")
+        ttk.Button(output, text="Browse", command=self.choose_output).grid(row=1, column=1, padx=(10, 0))
+        self.run_button = ttk.Button(output, text=f"Run {TOOLS[key][0]}", style="Accent.TButton", command=self.run_tool)
+        self.run_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(14, 0))
+
+    def _label_entry(self, frame, row, label, name, value="", secret=False):
+        ttk.Label(frame, text=label, style="Panel.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 12), pady=5)
+        entry = ttk.Entry(frame, textvariable=self.var(name, value), show="*" if secret else "")
+        entry.grid(row=row, column=1, sticky="ew", pady=5)
+        return entry
+
+    def _combo(self, frame, row, label, name, values, value=None):
+        ttk.Label(frame, text=label, style="Panel.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 12), pady=5)
+        combo = ttk.Combobox(frame, textvariable=self.var(name, value or values[0]), values=values, state="readonly")
+        combo.grid(row=row, column=1, sticky="ew", pady=5)
+        return combo
+
+    def _tool_options(self, frame, key):
+        if key == "split":
+            self._label_entry(frame, 1, "Ranges", "ranges", "")
+            ttk.Label(frame, text="Leave empty for one file per page, or use 1-3,4-6,7.", style="Panel.TLabel", foreground=MUTED).grid(row=2, column=1, sticky="w")
+        elif key in ("extract", "remove"):
+            self._label_entry(frame, 1, "Pages", "pages", "1")
+            ttk.Label(frame, text="Examples: 1,3,5-8", style="Panel.TLabel", foreground=MUTED).grid(row=2, column=1, sticky="w")
+        elif key == "rotate":
+            self._combo(frame, 1, "Rotation", "rotation", ("90 clockwise", "180", "90 counter-clockwise"))
+            self._label_entry(frame, 2, "Pages", "pages", "")
+            ttk.Label(frame, text="Leave pages empty to rotate every page.", style="Panel.TLabel", foreground=MUTED).grid(row=3, column=1, sticky="w")
+        elif key == "compress":
+            self._combo(
+                frame, 1, "Quality", "quality",
+                ("Lossless optimization", "Balanced", "Smallest file"), "Balanced"
+            )
+            ttk.Label(
+                frame,
+                text="Built-in compression. Balanced and Smallest recompress embedded images.",
+                style="Panel.TLabel", foreground=MUTED,
+            ).grid(row=2, column=1, sticky="w")
+        elif key == "protect":
+            self._label_entry(frame, 1, "Open password", "password", secret=True)
+            self._label_entry(frame, 2, "Owner password", "owner", secret=True)
+        elif key == "unlock":
+            self._label_entry(frame, 1, "Current password", "password", secret=True)
+        elif key == "images_to_pdf":
+            self._combo(frame, 1, "Page fit", "fit", ("Fit image", "Fill page"), "Fit image")
+            self._combo(frame, 2, "Page size", "page_size", ("A4", "Letter", "Match each image"), "A4")
+        elif key == "pdf_to_images":
+            self._combo(frame, 1, "Image format", "format", ("PNG", "JPG"), "PNG")
+            self._combo(frame, 2, "Resolution", "dpi", ("96", "150", "200", "300"), "150")
+            self._label_entry(frame, 3, "Pages", "pages", "")
+        elif key == "text":
+            ttk.Label(frame, text="Text extraction works only when the PDF contains a searchable text layer.", style="Panel.TLabel", foreground=MUTED).grid(row=1, column=0, columnspan=2, sticky="w")
+        elif key == "images":
+            ttk.Label(frame, text="Embedded images are extracted as stored; page layouts are not rendered.", style="Panel.TLabel", foreground=MUTED).grid(row=1, column=0, columnspan=2, sticky="w")
+        elif key == "watermark":
+            self._label_entry(frame, 1, "Watermark text", "text", "CONFIDENTIAL")
+            self._combo(frame, 2, "Position", "position", ("Diagonal", "Center", "Top", "Bottom"), "Diagonal")
+            self._combo(frame, 3, "Opacity", "opacity", ("10%", "20%", "30%", "40%", "50%"), "20%")
+            self._label_entry(frame, 4, "Pages", "pages", "")
+        elif key == "numbers":
+            self._combo(frame, 1, "Position", "position", ("Bottom center", "Bottom right", "Bottom left", "Top center", "Top right", "Top left"), "Bottom center")
+            self._label_entry(frame, 2, "Start number", "start", "1")
+            self._label_entry(frame, 3, "Prefix", "prefix", "")
+        elif key == "metadata":
+            self._label_entry(frame, 1, "Title", "title")
+            self._label_entry(frame, 2, "Author", "author")
+            self._label_entry(frame, 3, "Subject", "subject")
+            self._label_entry(frame, 4, "Keywords", "keywords")
+        else:
+            ttk.Label(frame, text="Files will be combined in the order shown above.", style="Panel.TLabel", foreground=MUTED).grid(row=1, column=0, columnspan=2, sticky="w")
+
+    def choose_files(self, multiple):
+        images = self.current_tool == "images_to_pdf"
+        types = [("Images", "*.png *.jpg *.jpeg *.tif *.tiff *.bmp")] if images else [("PDF files", "*.pdf")]
+        paths = filedialog.askopenfilenames(title="Choose files", filetypes=types) if multiple else [filedialog.askopenfilename(title="Choose file", filetypes=types)]
+        for path in paths:
+            if path and path not in self.files:
+                self.files.append(path)
+        self.refresh_files()
+        if self.files and not self.output_var.get():
+            self.output_var.set(self.suggest_output())
+
+    def refresh_files(self):
+        self.file_list.delete(0, tk.END)
+        for path in self.files:
+            try:
+                size = human_size(os.path.getsize(path))
+            except OSError:
+                size = "missing"
+            self.file_list.insert(tk.END, f"{Path(path).name}   ({size})")
+
+    def remove_files(self):
+        selected = list(self.file_list.curselection())
+        for index in reversed(selected):
+            self.files.pop(index)
+        self.refresh_files()
+
+    def move_file(self, direction):
+        selected = self.file_list.curselection()
+        if len(selected) != 1:
+            return
+        old = selected[0]
+        new = max(0, min(len(self.files) - 1, old + direction))
+        if new == old:
+            return
+        self.files[old], self.files[new] = self.files[new], self.files[old]
+        self.refresh_files()
+        self.file_list.selection_set(new)
+
+    def suggest_output(self):
+        source = self.files[0]
+        key = self.current_tool
+        if key in ("split", "pdf_to_images", "images"):
+            return str(Path(source).with_name(f"{Path(source).stem}_{key}"))
+        if key == "text":
+            return default_output(source, "text", ".txt")
+        if key == "images_to_pdf":
+            return str(Path(source).with_name("images_combined.pdf"))
+        return default_output(source, key)
+
+    def choose_output(self):
+        folder_tools = ("split", "pdf_to_images", "images")
+        if self.current_tool in folder_tools:
+            path = filedialog.askdirectory(title="Choose output folder")
+        else:
+            ext = ".txt" if self.current_tool == "text" else ".pdf"
+            path = filedialog.asksaveasfilename(title="Choose output file", defaultextension=ext, filetypes=[("Text", "*.txt")] if ext == ".txt" else [("PDF", "*.pdf")])
+        if path:
+            self.output_var.set(path)
+
+    def run_tool(self):
+        try:
+            if not self.files:
+                raise ValueError("Choose at least one input file.")
+            if self.current_tool not in ("merge", "images_to_pdf") and len(self.files) != 1:
+                raise ValueError("This tool accepts one input file.")
+            output = self.output_var.get().strip()
+            if not output:
+                raise ValueError("Choose an output location.")
+            input_abs = {os.path.abspath(path) for path in self.files}
+            if os.path.abspath(output) in input_abs:
+                raise ValueError("The output must be different from the input file.")
+        except ValueError as exc:
+            messagebox.showerror(APP_NAME, str(exc))
+            return
+        self.busy = True
+        self.run_button.state(["disabled"])
+        self.progress.start(12)
+        self.status_var.set(f"Running {TOOLS[self.current_tool][0]}...")
+        settings = {name: value.get() for name, value in self.vars.items()}
+        threading.Thread(target=self._worker, args=(self.current_tool, list(self.files), output, settings), daemon=True).start()
+
+    def _worker(self, tool, files, output, settings):
+        try:
+            if tool != "compress":
+                require_pdf_libs()
+            result = getattr(self, f"do_{tool}")(files, output, settings)
+            self.after(0, self._finished, True, result)
+        except Exception as exc:
+            self.after(0, self._finished, False, str(exc))
+
+    def _finished(self, success, message):
+        self.busy = False
+        self.progress.stop()
+        self.run_button.state(["!disabled"])
+        self.status_var.set(message if success else "Operation failed")
+        (messagebox.showinfo if success else messagebox.showerror)(APP_NAME, message)
+
+    @staticmethod
+    def _reader(path, password=""):
+        from pypdf import PdfReader
+        reader = PdfReader(path)
+        if reader.is_encrypted:
+            if not password or reader.decrypt(password) == 0:
+                raise ValueError("The PDF is encrypted. Enter the correct password using Unlock PDF first.")
+        return reader
+
+    def do_merge(self, files, output, _settings):
+        from pypdf import PdfWriter
+        writer = PdfWriter()
+        for path in files:
+            writer.append(path)
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        writer.write(output)
+        writer.close()
+        return f"Merged {len(files)} files into {Path(output).name}."
+
+    def do_split(self, files, output, settings):
+        from pypdf import PdfWriter
+        reader = self._reader(files[0])
+        groups = parse_ranges(settings["ranges"], len(reader.pages))
+        folder = Path(output)
+        folder.mkdir(parents=True, exist_ok=True)
+        stem = Path(files[0]).stem
+        for index, pages in enumerate(groups, 1):
+            writer = PdfWriter()
+            for page in pages:
+                writer.add_page(reader.pages[page])
+            writer.write(folder / f"{stem}_part_{index:03d}.pdf")
+            writer.close()
+        return f"Created {len(groups)} PDF files in {folder.name}."
+
+    def do_extract(self, files, output, settings):
+        from pypdf import PdfWriter
+        reader = self._reader(files[0])
+        pages = parse_pages(settings["pages"], len(reader.pages))
+        writer = PdfWriter()
+        for page in pages:
+            writer.add_page(reader.pages[page])
+        writer.write(output)
+        writer.close()
+        return f"Extracted {len(pages)} pages."
+
+    def do_remove(self, files, output, settings):
+        from pypdf import PdfWriter
+        reader = self._reader(files[0])
+        remove = set(parse_pages(settings["pages"], len(reader.pages)))
+        keep = [i for i in range(len(reader.pages)) if i not in remove]
+        if not keep:
+            raise ValueError("You cannot remove every page.")
+        writer = PdfWriter()
+        for page in keep:
+            writer.add_page(reader.pages[page])
+        writer.write(output)
+        writer.close()
+        return f"Removed {len(remove)} pages; kept {len(keep)}."
+
+    def do_rotate(self, files, output, settings):
+        from pypdf import PdfWriter
+        reader = self._reader(files[0])
+        pages = set(parse_pages(settings["pages"], len(reader.pages), allow_empty=True))
+        angle = {"90 clockwise": 90, "180": 180, "90 counter-clockwise": 270}[settings["rotation"]]
+        writer = PdfWriter()
+        for index, page in enumerate(reader.pages):
+            if index in pages:
+                page.rotate(angle)
+            writer.add_page(page)
+        writer.write(output)
+        writer.close()
+        return f"Rotated {len(pages)} pages."
+
+    def do_compress(self, files, output, settings):
+        from pypdf import PdfWriter
+
+        reader = self._reader(files[0])
+        writer = PdfWriter()
+        mode = settings["quality"]
+        image_quality = {"Balanced": 72, "Smallest file": 48}.get(mode)
+
+        for source_page in reader.pages:
+            writer.add_page(source_page)
+            page = writer.pages[-1]
+            page.compress_content_streams(level=9)
+            if image_quality is not None:
+                for embedded in list(page.images):
+                    try:
+                        image = embedded.image
+                        if image.mode not in ("RGB", "L"):
+                            image = image.convert("RGB")
+                        embedded.replace(image, quality=image_quality, optimize=True)
+                    except Exception:
+                        # Some inline or unusual image encodings cannot be replaced safely.
+                        continue
+
+        if reader.metadata:
+            metadata = {
+                str(key): str(value)
+                for key, value in reader.metadata.items()
+                if value is not None
+            }
+            writer.add_metadata(metadata)
+        writer.compress_identical_objects(remove_duplicates=True, remove_unreferenced=True)
+        writer.write(output)
+        writer.close()
+
+        before, after = os.path.getsize(files[0]), os.path.getsize(output)
+        change = (before - after) / before * 100 if before else 0
+        if change >= 0:
+            return f"Finished: {human_size(before)} to {human_size(after)} ({change:.1f}% smaller)."
+        return (
+            f"Finished, but this PDF grew by {-change:.1f}%. It was probably already optimized. "
+            "Keep the original unless the new file is useful."
+        )
+
+    def do_protect(self, files, output, settings):
+        from pypdf import PdfWriter
+        if not settings["password"]:
+            raise ValueError("Enter an open password.")
+        reader = self._reader(files[0])
+        writer = PdfWriter()
+        writer.clone_document_from_reader(reader)
+        writer.encrypt(settings["password"], settings["owner"] or None, algorithm="AES-256")
+        writer.write(output)
+        writer.close()
+        return "Created an AES-256 encrypted PDF."
+
+    def do_unlock(self, files, output, settings):
+        from pypdf import PdfWriter
+        reader = self._reader(files[0], settings["password"])
+        writer = PdfWriter()
+        writer.clone_document_from_reader(reader)
+        writer.write(output)
+        writer.close()
+        return "Password protection was removed."
+
+    def do_images_to_pdf(self, files, output, settings):
+        from PIL import Image, ImageOps
+        from reportlab.lib.pagesizes import A4, LETTER
+        from reportlab.pdfgen import canvas
+        sizes = {"A4": A4, "Letter": LETTER}
+        pdf = canvas.Canvas(output)
+        for image_path in files:
+            with Image.open(image_path) as source:
+                image = ImageOps.exif_transpose(source).convert("RGB")
+                width, height = image.size
+                page_w, page_h = (width, height) if settings["page_size"] == "Match each image" else sizes[settings["page_size"]]
+                pdf.setPageSize((page_w, page_h))
+                scale = max(page_w / width, page_h / height) if settings["fit"] == "Fill page" else min(page_w / width, page_h / height)
+                draw_w, draw_h = width * scale, height * scale
+                x, y = (page_w - draw_w) / 2, (page_h - draw_h) / 2
+                temp = io.BytesIO()
+                image.save(temp, format="JPEG", quality=92)
+                temp.seek(0)
+                from reportlab.lib.utils import ImageReader
+                pdf.drawImage(ImageReader(temp), x, y, draw_w, draw_h, preserveAspectRatio=True)
+                pdf.showPage()
+        pdf.save()
+        return f"Combined {len(files)} images into a PDF."
+
+    def do_pdf_to_images(self, files, output, settings):
+        import pypdfium2 as pdfium
+        folder = Path(output)
+        folder.mkdir(parents=True, exist_ok=True)
+        fmt = settings["format"].lower()
+        dpi = int(settings["dpi"])
+        pdf = pdfium.PdfDocument(files[0])
+        pages = parse_pages(settings["pages"], len(pdf), allow_empty=True)
+        for page_index in pages:
+            page = pdf[page_index]
+            bitmap = page.render(scale=dpi / 72)
+            image = bitmap.to_pil()
+            destination = folder / f"page_{page_index + 1:03d}.{fmt}"
+            image.save(destination, format="JPEG" if fmt == "jpg" else "PNG", quality=92)
+            bitmap.close()
+            page.close()
+        pdf.close()
+        return f"Rendered {len(pages)} pages as {settings['format']} images."
+
+    def do_text(self, files, output, _settings):
+        reader = self._reader(files[0])
+        chunks = []
+        for index, page in enumerate(reader.pages, 1):
+            chunks.append(f"--- Page {index} ---\n{page.extract_text() or ''}")
+        Path(output).write_text("\n\n".join(chunks), encoding="utf-8")
+        return f"Extracted text from {len(chunks)} pages."
+
+    def do_images(self, files, output, _settings):
+        reader = self._reader(files[0])
+        folder = Path(output)
+        folder.mkdir(parents=True, exist_ok=True)
+        count = 0
+        for page_number, page in enumerate(reader.pages, 1):
+            for embedded in page.images:
+                try:
+                    suffix = Path(embedded.name).suffix or ".bin"
+                    count += 1
+                    destination = folder / f"page_{page_number:03d}_image_{count:03d}{suffix}"
+                    destination.write_bytes(embedded.data)
+                except Exception:
+                    continue
+        if not count:
+            raise RuntimeError("No directly extractable embedded images were found. Use PDF to images to render whole pages instead.")
+        return f"Extracted {count} embedded images."
+
+    @staticmethod
+    def _overlay(width, height, drawer):
+        from reportlab.pdfgen import canvas
+        packet = io.BytesIO()
+        pdf = canvas.Canvas(packet, pagesize=(width, height))
+        drawer(pdf, width, height)
+        pdf.save()
+        packet.seek(0)
+        from pypdf import PdfReader
+        return PdfReader(packet).pages[0]
+
+    def do_watermark(self, files, output, settings):
+        from pypdf import PdfWriter
+        reader = self._reader(files[0])
+        selected = set(parse_pages(settings["pages"], len(reader.pages), allow_empty=True))
+        opacity = int(settings["opacity"].rstrip("%")) / 100
+        writer = PdfWriter()
+        for index, source_page in enumerate(reader.pages):
+            writer.add_page(source_page)
+            page = writer.pages[-1]
+            if index in selected:
+                width, height = float(page.mediabox.width), float(page.mediabox.height)
+                def draw(pdf, w, h, text=settings["text"], pos=settings["position"]):
+                    pdf.saveState(); pdf.setFillAlpha(opacity); pdf.setFillColorRGB(0.07, 0.39, 0.91)
+                    size = max(18, min(w, h) / 10); pdf.setFont("Helvetica-Bold", size)
+                    if pos == "Diagonal":
+                        pdf.translate(w / 2, h / 2); pdf.rotate(35); pdf.drawCentredString(0, -size / 3, text)
+                    elif pos == "Center": pdf.drawCentredString(w / 2, h / 2, text)
+                    elif pos == "Top": pdf.drawCentredString(w / 2, h - 45, text)
+                    else: pdf.drawCentredString(w / 2, 30, text)
+                    pdf.restoreState()
+                page.merge_page(self._overlay(width, height, draw))
+        writer.write(output); writer.close()
+        return f"Added watermark to {len(selected)} pages."
+
+    def do_numbers(self, files, output, settings):
+        from pypdf import PdfWriter
+        reader = self._reader(files[0])
+        start = int(settings["start"])
+        writer = PdfWriter()
+        for index, source_page in enumerate(reader.pages):
+            writer.add_page(source_page)
+            page = writer.pages[-1]
+            width, height = float(page.mediabox.width), float(page.mediabox.height)
+            label = f"{settings['prefix']}{start + index}"
+            def draw(pdf, w, h, text=label, pos=settings["position"]):
+                pdf.setFont("Helvetica", 10); margin = 28
+                y = h - margin if pos.startswith("Top") else margin
+                if pos.endswith("left"): pdf.drawString(margin, y, text)
+                elif pos.endswith("right"): pdf.drawRightString(w - margin, y, text)
+                else: pdf.drawCentredString(w / 2, y, text)
+            page.merge_page(self._overlay(width, height, draw))
+        writer.write(output); writer.close()
+        return f"Numbered {len(reader.pages)} pages."
+
+    def do_metadata(self, files, output, settings):
+        from pypdf import PdfWriter
+        reader = self._reader(files[0])
+        writer = PdfWriter()
+        writer.clone_document_from_reader(reader)
+        metadata = {
+            "/Title": settings["title"], "/Author": settings["author"],
+            "/Subject": settings["subject"], "/Keywords": settings["keywords"],
+        }
+        writer.add_metadata(metadata)
+        writer.write(output); writer.close()
+        return "PDF metadata was updated."
+
+
+def packaged_self_test():
+    """Exercise modules that must be present in the standalone executable."""
+    import pypdfium2 as pdfium
+    from PIL import Image as PillowImage
+    from pypdf import PdfReader, PdfWriter
+    from reportlab.pdfgen import canvas
+
+    with tempfile.TemporaryDirectory(prefix="rabpdf_selftest_") as folder:
+        source = Path(folder) / "source.pdf"
+        pdf = canvas.Canvas(str(source))
+        pdf.drawString(72, 720, "RabPDF packaged self-test")
+        pdf.showPage()
+        pdf.save()
+
+        reader = PdfReader(source)
+        if len(reader.pages) != 1:
+            raise RuntimeError("PDF reader self-test failed")
+
+        rendered = pdfium.PdfDocument(str(source))
+        bitmap = rendered[0].render(scale=1)
+        image = bitmap.to_pil()
+        if not isinstance(image, PillowImage.Image) or image.width < 1:
+            raise RuntimeError("PDF renderer self-test failed")
+        bitmap.close()
+        rendered.close()
+
+        encrypted = Path(folder) / "encrypted.pdf"
+        writer = PdfWriter()
+        writer.add_page(reader.pages[0])
+        writer.encrypt("rabpdf-test", algorithm="AES-256")
+        writer.write(encrypted)
+        writer.close()
+        if not PdfReader(encrypted).is_encrypted:
+            raise RuntimeError("Encryption self-test failed")
+
+
+if __name__ == "__main__":
+    if "--self-test" in sys.argv:
+        packaged_self_test()
+    else:
+        PDFStudio().mainloop()
