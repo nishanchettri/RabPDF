@@ -12,6 +12,7 @@ a = Analysis(
         (str(root / "assets" / "rabpdf_logo_72.png"), "."),
         (str(root / "assets" / "rabpdf_logo_32.png"), "."),
         (str(root / "assets" / "rabpdf_icon.ico"), "."),
+        (str(root / "assets" / "rabpdf_mascot_master.png"), "."),
     ],
     hiddenimports=[],
     hookspath=[],

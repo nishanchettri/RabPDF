@@ -11,17 +11,18 @@ from PIL import Image, ImageSequence, ImageTk
 
 
 APP_NAME = "RabPDF"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 APP_AUTHORS = "Nishan Chettri + ChatGPT"
-ACCENT = "#1264e8"
-ACCENT_DARK = "#0b4fc2"
-ACCENT_SOFT = "#eaf2ff"
-BG = "#f4f7fb"
+ACCENT = "#2f80ed"
+ACCENT_DARK = "#1f65c5"
+ACCENT_SOFT = "#e8f2ff"
+BG = "#f5f8fc"
 PANEL = "#ffffff"
-TEXT = "#172033"
-MUTED = "#62708a"
-SIDEBAR = "#0b1f3a"
-SIDEBAR_ACTIVE = "#163b70"
+TEXT = "#17243a"
+MUTED = "#68778d"
+BORDER = "#dce6f2"
+SIDEBAR = "#fbfdff"
+SIDEBAR_ACTIVE = "#e4f0ff"
 if getattr(sys, "frozen", False):
     ASSET_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 else:
@@ -121,8 +122,8 @@ class PDFStudio(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"{APP_NAME} - All-in-one PDF tools")
-        self.geometry("1100x720")
-        self.minsize(900, 620)
+        self.geometry("1180x760")
+        self.minsize(940, 650)
         self.current_tool = "merge"
         self.files = []
         self.busy = False
@@ -185,17 +186,21 @@ class PDFStudio(tk.Tk):
         except tk.TclError:
             pass
         style.configure("TFrame", background=BG)
-        style.configure("Panel.TFrame", background=PANEL)
+        style.configure("Panel.TFrame", background=PANEL, relief="solid", borderwidth=1, bordercolor=BORDER)
+        style.configure("Header.TFrame", background=BG)
         style.configure("TLabel", background=BG, foreground=TEXT, font=("Segoe UI", 10))
         style.configure("Panel.TLabel", background=PANEL, foreground=TEXT, font=("Segoe UI", 10))
-        style.configure("Title.TLabel", background=BG, foreground=TEXT, font=("Segoe UI Semibold", 22))
+        style.configure("Title.TLabel", background=BG, foreground=TEXT, font=("Segoe UI Semibold", 24))
         style.configure("Subtitle.TLabel", background=BG, foreground=MUTED, font=("Segoe UI", 10))
+        style.configure("Eyebrow.TLabel", background=BG, foreground=ACCENT, font=("Segoe UI Semibold", 8))
         style.configure("Section.TLabel", background=PANEL, foreground=TEXT, font=("Segoe UI Semibold", 11))
-        style.configure("Accent.TButton", background=ACCENT, foreground="white", font=("Segoe UI Semibold", 10), padding=(16, 10), borderwidth=0)
+        style.configure("Hint.TLabel", background=PANEL, foreground=MUTED, font=("Segoe UI", 8))
+        style.configure("Accent.TButton", background=ACCENT, foreground="white", font=("Segoe UI Semibold", 10), padding=(18, 11), borderwidth=0)
         style.map("Accent.TButton", background=[("active", ACCENT_DARK), ("disabled", "#9bbcf0")])
-        style.configure("TButton", font=("Segoe UI", 9), padding=(10, 7))
-        style.configure("TEntry", padding=7)
-        style.configure("TCombobox", padding=6)
+        style.configure("TButton", background="#eef4fb", foreground=TEXT, font=("Segoe UI", 9), padding=(11, 7), borderwidth=0)
+        style.map("TButton", background=[("active", "#dfeafb")])
+        style.configure("TEntry", fieldbackground="#fbfdff", bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER, padding=8)
+        style.configure("TCombobox", fieldbackground="#fbfdff", bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER, padding=7)
         style.configure("Horizontal.TProgressbar", background=ACCENT, troughcolor=ACCENT_SOFT)
 
     def _layout(self):
@@ -203,76 +208,92 @@ class PDFStudio(tk.Tk):
         self.grid_rowconfigure(0, weight=1)
         self._sidebar()
 
-        content = ttk.Frame(self, padding=(28, 22))
+        content = ttk.Frame(self, padding=(34, 26, 34, 20))
         content.grid(row=0, column=1, sticky="nsew")
         content.columnconfigure(0, weight=1)
-        content.rowconfigure(2, weight=1)
+        content.rowconfigure(3, weight=1)
 
         self.title_var = tk.StringVar()
         self.desc_var = tk.StringVar()
-        ttk.Label(content, textvariable=self.title_var, style="Title.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(content, textvariable=self.desc_var, style="Subtitle.TLabel").grid(row=1, column=0, sticky="w", pady=(3, 16))
+        self.category_var = tk.StringVar()
+        header = ttk.Frame(content, style="Header.TFrame")
+        header.grid(row=0, column=0, sticky="ew")
+        header.columnconfigure(0, weight=1)
+        heading = ttk.Frame(header, style="Header.TFrame")
+        heading.grid(row=0, column=0, sticky="w")
+        ttk.Label(heading, textvariable=self.category_var, style="Eyebrow.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(heading, textvariable=self.title_var, style="Title.TLabel").grid(row=1, column=0, sticky="w", pady=(2, 0))
+        ttk.Label(heading, textvariable=self.desc_var, style="Subtitle.TLabel").grid(row=2, column=0, sticky="w", pady=(4, 0))
+
+        trust = tk.Frame(header, bg=ACCENT_SOFT, highlightthickness=1, highlightbackground="#c9e0ff")
+        trust.grid(row=0, column=1, sticky="ne", padx=(20, 0), pady=(4, 0))
+        tk.Label(trust, text="OFFLINE", bg=ACCENT_SOFT, fg=ACCENT_DARK, font=("Segoe UI Semibold", 8)).pack(anchor="e", padx=12, pady=(7, 0))
+        tk.Label(trust, text="Files stay on this computer", bg=ACCENT_SOFT, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="e", padx=12, pady=(0, 7))
+
+        tk.Frame(content, bg=BORDER, height=1).grid(row=1, column=0, sticky="ew", pady=(20, 18))
 
         self.scroller = ScrollFrame(content)
-        self.scroller.grid(row=2, column=0, sticky="nsew")
+        self.scroller.grid(row=3, column=0, sticky="nsew")
         self.scroller.body.columnconfigure(0, weight=1)
 
         footer = ttk.Frame(content)
-        footer.grid(row=3, column=0, sticky="ew", pady=(14, 0))
-        footer.columnconfigure(0, weight=1)
+        footer.grid(row=4, column=0, sticky="ew", pady=(12, 0))
         self.status_var = tk.StringVar(value="Ready")
-        ttk.Label(footer, textvariable=self.status_var, style="Subtitle.TLabel").grid(row=0, column=0, sticky="w")
+        self.status_badge = tk.Label(footer, text="READY", bg="#e7f7ee", fg="#217a48", font=("Segoe UI Semibold", 8), padx=9, pady=4)
+        self.status_badge.grid(row=0, column=0, sticky="w")
+        ttk.Label(footer, textvariable=self.status_var, style="Subtitle.TLabel").grid(row=0, column=1, sticky="w", padx=(10, 0))
+        footer.columnconfigure(1, weight=1)
         self.progress = ttk.Progressbar(footer, mode="indeterminate", length=160)
-        self.progress.grid(row=0, column=1, padx=(16, 0))
+        self.progress.grid(row=0, column=2, padx=(16, 0))
 
     def _sidebar(self):
-        side = tk.Frame(self, bg=SIDEBAR, width=230)
+        side = tk.Frame(self, bg=SIDEBAR, width=252, highlightthickness=1, highlightbackground=BORDER)
         side.grid(row=0, column=0, sticky="nsw")
         side.grid_propagate(False)
         brand = tk.Frame(side, bg=SIDEBAR)
-        brand.pack(fill="x", padx=16, pady=(16, 12))
+        brand.pack(fill="x", padx=18, pady=(18, 12))
         if self.logo_image:
             self.logo_label = tk.Label(brand, image=self.logo_image, bg=SIDEBAR, bd=0)
             self.logo_label.pack(side="left")
         wordmark = tk.Frame(brand, bg=SIDEBAR)
         wordmark.pack(side="left", padx=(10, 0))
-        tk.Label(wordmark, text="RabPDF", bg=SIDEBAR, fg="white", font=("Segoe UI Semibold", 19)).pack(anchor="w")
-        tk.Label(wordmark, text="PDF TOOLBOX", bg=SIDEBAR, fg="#86b6ff", font=("Segoe UI Semibold", 8)).pack(anchor="w")
+        tk.Label(wordmark, text="RabPDF", bg=SIDEBAR, fg=TEXT, font=("Segoe UI Semibold", 20)).pack(anchor="w")
+        tk.Label(wordmark, text="PDF TOOLBOX", bg=SIDEBAR, fg=ACCENT, font=("Segoe UI Semibold", 8)).pack(anchor="w")
         groups = ("Organize", "Optimize", "Security", "Convert", "Annotate")
         for group in groups:
-            tk.Label(side, text=group.upper(), bg=SIDEBAR, fg="#9ca3af", font=("Segoe UI Semibold", 8)).pack(anchor="w", padx=20, pady=(10, 4))
+            tk.Label(side, text=group.upper(), bg=SIDEBAR, fg="#8a99ad", font=("Segoe UI Semibold", 8)).pack(anchor="w", padx=22, pady=(7, 3))
             for key, (name, _desc, category) in TOOLS.items():
                 if category != group:
                     continue
                 button = tk.Button(
                     side, text=name, anchor="w", relief="flat", bd=0, cursor="hand2",
-                    bg=SIDEBAR, fg="#dbeafe", activebackground=SIDEBAR_ACTIVE, activeforeground="white",
-                    font=("Segoe UI", 9), padx=20, pady=6, command=lambda k=key: self.show_tool(k)
+                    bg=SIDEBAR, fg="#44536a", activebackground=SIDEBAR_ACTIVE, activeforeground=TEXT,
+                    font=("Segoe UI", 9), padx=22, pady=5, command=lambda k=key: self.show_tool(k)
                 )
                 button.pack(fill="x")
                 self.tool_buttons[key] = button
         footer = tk.Frame(side, bg=SIDEBAR)
         footer.pack(side="bottom", fill="x", padx=16, pady=(8, 14))
-        tk.Frame(footer, bg="#24466f", height=1).pack(fill="x", pady=(0, 10))
+        tk.Frame(footer, bg=BORDER, height=1).pack(fill="x", pady=(0, 10))
         tk.Button(
             footer, text="About RabPDF", anchor="w", relief="flat", bd=0,
-            cursor="hand2", bg=SIDEBAR, fg="#bfdbfe",
-            activebackground=SIDEBAR_ACTIVE, activeforeground="white",
+            cursor="hand2", bg=SIDEBAR, fg=ACCENT,
+            activebackground=SIDEBAR_ACTIVE, activeforeground=ACCENT_DARK,
             font=("Segoe UI", 8), padx=0, pady=2, command=self.show_about,
         ).pack(fill="x")
         tk.Label(
             footer, text="Nishan Chettri + ChatGPT", bg=SIDEBAR,
-            fg="#7894b8", font=("Segoe UI", 7),
+            fg="#73839a", font=("Segoe UI", 7),
         ).pack(anchor="w", pady=(2, 0))
         tk.Label(
             footer, text=f"Version {APP_VERSION}", bg=SIDEBAR,
-            fg="#607a9c", font=("Segoe UI", 7),
+            fg="#9aa6b7", font=("Segoe UI", 7),
         ).pack(anchor="w")
 
     def show_about(self):
         about = tk.Toplevel(self)
         about.title(f"About {APP_NAME}")
-        about.geometry("420x310")
+        about.geometry("440x360")
         about.resizable(False, False)
         about.transient(self)
         about.grab_set()
@@ -311,11 +332,18 @@ class PDFStudio(tk.Tk):
         for child in self.scroller.body.winfo_children():
             child.destroy()
         for name, button in self.tool_buttons.items():
-            button.configure(bg=SIDEBAR_ACTIVE if name == key else SIDEBAR, fg="white" if name == key else "#dbeafe")
-        title, desc, _group = TOOLS[key]
+            selected = name == key
+            button.configure(
+                bg=SIDEBAR_ACTIVE if selected else SIDEBAR,
+                fg=ACCENT_DARK if selected else "#44536a",
+                font=("Segoe UI Semibold", 9) if selected else ("Segoe UI", 9),
+            )
+        title, desc, group = TOOLS[key]
+        self.category_var.set(group.upper())
         self.title_var.set(title)
         self.desc_var.set(desc)
         self.status_var.set("Ready")
+        self.status_badge.configure(text="READY", bg="#e7f7ee", fg="#217a48")
         self.vars = {}
         self._build_tool(key)
 
@@ -324,8 +352,8 @@ class PDFStudio(tk.Tk):
         return self.vars[name]
 
     def _panel(self, row, title):
-        frame = ttk.Frame(self.scroller.body, style="Panel.TFrame", padding=18)
-        frame.grid(row=row, column=0, sticky="ew", pady=(0, 12))
+        frame = ttk.Frame(self.scroller.body, style="Panel.TFrame", padding=20)
+        frame.grid(row=row, column=0, sticky="ew", pady=(0, 14))
         frame.columnconfigure(0, weight=1)
         ttk.Label(frame, text=title, style="Section.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 12))
         return frame
@@ -334,7 +362,13 @@ class PDFStudio(tk.Tk):
         multiple = key in ("merge", "images_to_pdf")
         input_title = "Files" if multiple else "Input file"
         panel = self._panel(0, input_title)
-        self.file_list = tk.Listbox(panel, height=5 if multiple else 3, relief="solid", bd=1, selectmode=tk.EXTENDED, font=("Segoe UI", 9))
+        self.file_list = tk.Listbox(
+            panel, height=5 if multiple else 3, relief="flat", bd=0,
+            highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACCENT,
+            selectmode=tk.EXTENDED, font=("Segoe UI", 9),
+            bg="#f9fbfe", fg=TEXT, selectbackground=ACCENT_SOFT,
+            selectforeground=ACCENT_DARK, activestyle="none",
+        )
         self.file_list.grid(row=1, column=0, columnspan=4, sticky="ew")
         label = "Add files" if multiple else "Choose file"
         ttk.Button(panel, text=label, command=lambda: self.choose_files(multiple)).grid(row=2, column=0, sticky="w", pady=(10, 0))
@@ -498,6 +532,7 @@ class PDFStudio(tk.Tk):
         self.busy = True
         self.run_button.state(["disabled"])
         self.progress.start(12)
+        self.status_badge.configure(text="WORKING", bg=ACCENT_SOFT, fg=ACCENT_DARK)
         self.status_var.set(f"Running {TOOLS[self.current_tool][0]}...")
         settings = {name: value.get() for name, value in self.vars.items()}
         threading.Thread(target=self._worker, args=(self.current_tool, list(self.files), output, settings), daemon=True).start()
@@ -516,6 +551,10 @@ class PDFStudio(tk.Tk):
         self.progress.stop()
         self.run_button.state(["!disabled"])
         self.status_var.set(message if success else "Operation failed")
+        if success:
+            self.status_badge.configure(text="DONE", bg="#e7f7ee", fg="#217a48")
+        else:
+            self.status_badge.configure(text="ERROR", bg="#fff0f0", fg="#b42318")
         (messagebox.showinfo if success else messagebox.showerror)(APP_NAME, message)
 
     @staticmethod
