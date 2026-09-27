@@ -1,8 +1,8 @@
 # RabPDF
 
-RabPDF is a private, offline Windows desktop toolbox for common PDF operations. It uses a blue interface and an animated rabbit mascot.
+RabPDF is a private, offline Windows desktop toolbox for common PDF operations.
 
-Created by **Nishan Chettri + ChatGPT**.
+Created by **Nishan Chettri + ChatGPT 5.6 Sol Light **.
 
 ## Download
 
