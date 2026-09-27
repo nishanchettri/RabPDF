@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 - 2026-09-27
+
+- Embedded the complete authorship credit directly in the application and EXE metadata.
+- Added clickable author links in the sidebar and About dialog.
+- Linked Nishan Chettri to <https://nishanchettri.com>.
+
 ## 1.2.0 - 2026-09-27
 
 - Redesigned the desktop interface with a quieter minimal blue visual system.

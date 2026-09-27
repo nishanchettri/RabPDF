@@ -4,6 +4,7 @@ import sys
 import tempfile
 import threading
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -11,8 +12,9 @@ from PIL import Image, ImageSequence, ImageTk
 
 
 APP_NAME = "RabPDF"
-APP_VERSION = "1.2.0"
-APP_AUTHORS = "Nishan Chettri + ChatGPT"
+APP_VERSION = "1.2.1"
+APP_AUTHORS = "Nishan Chettri + ChatGPT 5.6 Sol Light"
+APP_WEBSITE = "https://nishanchettri.com"
 ACCENT = "#2f80ed"
 ACCENT_DARK = "#1f65c5"
 ACCENT_SOFT = "#e8f2ff"
@@ -281,14 +283,20 @@ class PDFStudio(tk.Tk):
             activebackground=SIDEBAR_ACTIVE, activeforeground=ACCENT_DARK,
             font=("Segoe UI", 8), padx=0, pady=2, command=self.show_about,
         ).pack(fill="x")
-        tk.Label(
-            footer, text="Nishan Chettri + ChatGPT", bg=SIDEBAR,
-            fg="#73839a", font=("Segoe UI", 7),
-        ).pack(anchor="w", pady=(2, 0))
+        tk.Button(
+            footer, text="Nishan Chettri + ChatGPT 5.6 Sol Light",
+            anchor="w", relief="flat", bd=0, cursor="hand2",
+            bg=SIDEBAR, fg="#73839a", activebackground=SIDEBAR,
+            activeforeground=ACCENT, font=("Segoe UI", 7, "underline"),
+            padx=0, pady=0, command=self.open_author_site,
+        ).pack(fill="x", pady=(2, 0))
         tk.Label(
             footer, text=f"Version {APP_VERSION}", bg=SIDEBAR,
             fg="#9aa6b7", font=("Segoe UI", 7),
         ).pack(anchor="w")
+
+    def open_author_site(self):
+        webbrowser.open_new_tab(APP_WEBSITE)
 
     def show_about(self):
         about = tk.Toplevel(self)
@@ -313,10 +321,17 @@ class PDFStudio(tk.Tk):
             about, text="Created by", bg=PANEL, fg=MUTED,
             font=("Segoe UI", 8),
         ).pack()
+        tk.Button(
+            about, text=APP_AUTHORS, relief="flat", bd=0, cursor="hand2",
+            bg=PANEL, fg=ACCENT, activebackground=PANEL,
+            activeforeground=ACCENT_DARK,
+            font=("Segoe UI Semibold", 11, "underline"),
+            command=self.open_author_site,
+        ).pack(pady=(2, 2))
         tk.Label(
-            about, text=APP_AUTHORS, bg=PANEL, fg=ACCENT,
-            font=("Segoe UI Semibold", 11),
-        ).pack(pady=(2, 10))
+            about, text="nishanchettri.com", bg=PANEL, fg=MUTED,
+            font=("Segoe UI", 8),
+        ).pack(pady=(0, 10))
         tk.Label(
             about, text=f"Version {APP_VERSION}", bg=PANEL, fg=MUTED,
             font=("Segoe UI", 8),

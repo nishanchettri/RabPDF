@@ -11,10 +11,21 @@ from reportlab.pdfgen import canvas
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from rabpdf import PDFStudio, parse_pages  # noqa: E402
+from rabpdf import (  # noqa: E402
+    APP_AUTHORS,
+    APP_VERSION,
+    APP_WEBSITE,
+    PDFStudio,
+    parse_pages,
+)
 
 
 class RabPDFToolsTest(unittest.TestCase):
+    def test_official_credit_is_embedded(self):
+        self.assertEqual(APP_VERSION, "1.2.1")
+        self.assertEqual(APP_AUTHORS, "Nishan Chettri + ChatGPT 5.6 Sol Light")
+        self.assertEqual(APP_WEBSITE, "https://nishanchettri.com")
+
     def setUp(self):
         test_root = ROOT / ".test_tmp"
         test_root.mkdir(exist_ok=True)
