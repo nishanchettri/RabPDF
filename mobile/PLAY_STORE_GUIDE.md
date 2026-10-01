@@ -5,19 +5,10 @@ Google can change policies, and your Play Console dashboard is authoritative.
 
 ## 1. Create and verify your own developer account
 
-The chosen business model is 24 hours free, then a non-consumable one-time
-unlock at a planned US$0.99 base price. No subscription. Configure the app as
-free to download with an in-app product. The preview only implements the trial
-and expiry screen; Google Play Billing, restore purchases, price localization,
-purchase acknowledgement, and verification still need implementation and Play
-Console configuration before production. Do not claim checkout works yet.
-
-For the standard Google Play distribution, a digital feature unlock uses Play
-Billing unless an applicable policy exception or approved program applies:
-https://support.google.com/googleplay/android-developer/answer/9858738
-
-Details of merchant setup, taxes, regional pricing, and transaction verification
-are deferred until the owner chooses the payment configuration.
+RabPDF is completely free with optional AdMob banner revenue. No subscription,
+trial, in-app product, or payment gateway. Use ADS_SETUP.md for ad setup. Test
+ads produce no publisher revenue. Production ad serving depends on AdMob account
+and app readiness, consent configuration, and network/ad availability.
 
 Visit https://play.google.com/console and choose the correct personal or
 organization account type. The registration fee is US$25 once. Complete the
@@ -90,9 +81,10 @@ real support email and a review of the final build before it is published.
 
 Complete Data safety, the content-rating questionnaire, target audience, ads
 declaration, app access, and any other mandatory dashboard items. This build
-has no accounts, advertisements, analytics, or remote processing. Do not mark
-data as collected merely because a PDF is processed locally; equally, recheck
-all declarations if you add analytics, ads, uploads, or crash reporting later.
+has no accounts or remote PDF processing. Ad-enabled builds include AdMob and
+UMP; declare Contains ads and review Google's SDK data disclosures. Off-mode
+builds exclude these SDKs. Do not claim that an ad-enabled build collects no
+data merely because PDF processing is local.
 Declare the behavior of the actual build, not an assumed future architecture.
 
 https://support.google.com/googleplay/android-developer/answer/10787469

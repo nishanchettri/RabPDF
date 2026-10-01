@@ -1,5 +1,4 @@
 import './style.css';
-import './trial.css';
 import {createIcons, icons} from 'lucide';
 import {Capacitor, registerPlugin} from '@capacitor/core';
 import {Filesystem, Directory} from '@capacitor/filesystem';
@@ -16,27 +15,20 @@ let selected = null, files = [], outputs = [], busy = false, worker = null, sequ
 let pendingReject = null;
 const app = document.querySelector('#app');
 const SaveFile = registerPlugin('SaveFile');
-const Trial = registerPlugin('Trial');
-async function refreshAccess() {
-  if(!Capacitor.isNativePlatform())return {active:true,remainingSeconds:86400};
-  const access=await Trial.status();
-  const label=document.querySelector('#trial-status');
-  if(label)label.textContent=access.active?`Trial: ${Math.ceil(access.remainingSeconds/3600)} hours left`:'Trial ended';
-  return access;
+const Ads = registerPlugin('Ads');
+let adsReady = false;
+function updateAds() {
+  if(!adsReady)return;
+  Ads.visibility({visible:!selected}).catch(()=>{});
 }
-function showUnlock() {
-  let dialog=document.querySelector('#unlock-dialog');
-  if(!dialog){
-    dialog=document.createElement('dialog');dialog.id='unlock-dialog';
-    dialog.innerHTML=`<h2>Unlock RabPDF</h2><p>Your 24-hour free trial has ended.</p><p><strong>US$0.99</strong> one-time unlock. No subscription.</p><p>Checkout is not available in this preview release.</p><button class="primary" disabled>Payment setup pending</button><button class="quiet" id="close-unlock">Close</button>`;
-    document.body.append(dialog);dialog.querySelector('#close-unlock').onclick=()=>dialog.close();
-  }
-  dialog.showModal();
+async function initializeAds() {
+  if(!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('Ads'))return;
+  try { await Ads.initialize(); adsReady=true; updateAds(); } catch { /* Ads never block tools. */ }
 }
 const escape = value => String(value).replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 function glyph(name) { return `<i data-lucide="${name}"></i>`; }
 function render() {
-  app.innerHTML = `<header><button class="brand" id="home"><img src="/brand/rabpdf_mascot_animated.gif" alt="Rabbit"><span>RabPDF</span></button><div class="header-actions"><button id="qr" class="quiet">${glyph('qr-code')}<span>Link to QR</span></button><span class="offline">${glyph('shield-check')}<span>Offline</span></span></div></header><main id="main"></main><footer><a href="https://nishanchettri.com" target="_blank" rel="noopener">Nishan Chettri</a><span> + ChatGPT 5.6 Sol Light</span><span class="version">Android preview 0.1.0</span></footer>`;
+  app.innerHTML = `<header><button class="brand" id="home"><img src="/brand/rabpdf_mascot_animated.gif" alt="Rabbit"><span>RabPDF</span></button><div class="header-actions"><button id="qr" class="quiet">${glyph('qr-code')}<span>Link to QR</span></button><span class="offline">${glyph('shield-check')}<span>Offline</span></span></div></header><main id="main"></main><footer><a href="https://nishanchettri.com" target="_blank" rel="noopener">Nishan Chettri</a><span> + ChatGPT 5.6 Sol Light</span><span class="version">Android preview 0.2.0</span></footer>`;
   document.querySelector('#home').onclick=()=>{if(!busy) {selected=null;files=[];outputs=[];render();}};
   document.querySelector('#qr').onclick=()=>{if(!busy) open('qr');};
   const main=document.querySelector('#main');
@@ -74,10 +66,7 @@ function render() {
     };
   }
   createIcons({icons});
-  const trial=document.createElement('p');trial.id='trial-status';trial.className='trial-status';
-  trial.textContent=Capacitor.isNativePlatform()?'24-hour free trial':'Browser preview';
-  main.prepend(trial);
-  refreshAccess().catch(()=>{trial.textContent='Unable to check trial access';});
+  updateAds();
 }
 function open(tool){selected=tool;files=[];outputs=[];render();}
 function updateFiles(){
@@ -96,8 +85,6 @@ function setBusy(value){
 function status(message,error=false){const node=document.querySelector('#status');node.textContent=message;node.classList.toggle('error',error);}
 async function run(event){
   event.preventDefault();
-  try { if(!(await refreshAccess()).active){showUnlock();return;} }
-  catch { status('Unable to check trial access. Restart the app.',true);return; }
   const settings=Object.fromEntries(new FormData(event.target));
   if(selected!=='qr' && !files.length){status('Choose an input file.',true);return;}
   if(files.reduce((sum,f)=>sum+f.size,0)>128*1024*1024){status('Choose files totalling less than 128 MB.',true);return;}
@@ -183,3 +170,4 @@ async function save(action='save'){
   }catch(error){status(error.message||'Unable to save the file.',true);}
 }
 render();
+initializeAds();

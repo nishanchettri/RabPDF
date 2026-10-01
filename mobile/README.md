@@ -1,14 +1,15 @@
 # RabPDF for Android
 
-Android preview 0.1.0. This is an offline Android port, not a remote PDF service.
+Android preview 0.2.0. All tools are permanently free, with no trial or payments.
+PDF processing works offline. Optional AdMob ads use the network separately.
 
 All 16 desktop tools are implemented: page operations, compression, AES-256
 protection and authorized unlocking, image conversions, text/image extraction,
 watermarks, numbering, metadata, and QR generation. The PDF engine is exported
 from the desktop source and executes inside a bundled Pyodide worker. PDF.js
 renders PDF pages. Output files can be saved through Android's document picker
-or shared with another app. No account, advertising, analytics, or document
-uploads are part of RabPDF. Opening the author website or choosing another app
+or shared with another app. No account or document uploads are required.
+Ads are optional at build time; see ADS_SETUP.md. Opening the author website or choosing another app
 in the Android share sheet is an explicit user action.
 
 ## Development
@@ -42,13 +43,10 @@ signed using your private upload key before submission to Google Play.
 
 ## Verification and limits
 
-The Android preview starts a 24-hour trial on first launch. After expiry,
-processing tools are gated behind a planned one-time US$0.99 unlock, with no
-subscription. Payment configuration and Google Play Billing integration are
-deliberately deferred. Checkout is disabled and no payment is collected. Do not
-publish this preview as a fully purchasable app. A local trial can be reset by
-clearing app data or reinstalling; secure account-level enforcement would
-require a different entitlement design. The desktop remains free.
+The previous trial and planned paid unlock have been removed. No ad view,
+consent choice, ad availability, payment, or network connection gates tools.
+Default builds exclude advertising SDKs. Test and live ad modes are documented
+in ADS_SETUP.md. Desktop remains free and ad-free.
 
 This is a preview release. Passing a desktop-browser test or producing an APK
 does not prove behavior on every Android phone. Test every tool on real devices

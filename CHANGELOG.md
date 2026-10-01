@@ -1,5 +1,12 @@
 # Changelog
 
+## Android 0.2.0 - 2026-10-01
+
+- Removed the trial and paid unlock: all tools are permanently free.
+- Added optional home-screen AdMob banner support with UMP consent and privacy choices.
+- Added separate off, test, and live advertising build modes.
+- Updated the privacy draft and publication instructions for ad-enabled builds.
+
 ## 1.3.2 - 2026-10-01
 
 - Added a Link to QR shortcut immediately left of the offline badge.

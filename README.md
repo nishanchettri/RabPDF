@@ -26,8 +26,9 @@ Windows may show an unknown-publisher warning because the executable is not comm
 The Android source is in [`mobile/`](mobile/README.md). It implements all 16
 tools with local processing. Preview APK and signed App Bundle files are in
 [`release/android/`](release/android/). Test on real devices before publishing.
-The preview includes a 24-hour trial and the planned one-time US$0.99 unlock
-screen; checkout is disabled until payment details and Play Billing are configured.
+All tools are permanently free. There is no trial, payment, or subscription.
+Optional home-screen AdMob banners support Android development; see
+[`Ad setup`](mobile/ADS_SETUP.md). Desktop remains ad-free.
 See [`mobile/PLAY_STORE_GUIDE.md`](mobile/PLAY_STORE_GUIDE.md) for publication.
 
 ## Run the desktop app from source

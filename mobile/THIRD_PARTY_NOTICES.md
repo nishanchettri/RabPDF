@@ -15,6 +15,9 @@ third-party licenses.
 - qrcode (JavaScript): MIT, https://github.com/soldair/node-qrcode
 - JSZip: MIT or GPL-3.0, https://github.com/Stuk/jszip (MIT option used)
 - Lucide: ISC, https://github.com/lucide-icons/lucide
+- Optional Google Mobile Ads and UMP SDKs: Google SDK terms apply,
+  https://developers.google.com/admob/android/quick-start and
+  https://developers.google.com/admob/android/privacy
 
 The bundled Python wheels contain their package metadata and license files.
 The `pnpm-lock.yaml` records the JavaScript dependency versions.

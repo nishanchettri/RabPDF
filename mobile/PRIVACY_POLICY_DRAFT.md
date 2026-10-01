@@ -6,7 +6,21 @@ RabPDF is developed by Nishan Chettri, with assistance from ChatGPT.
 
 RabPDF processes the files you choose locally on your device. The app does not
 upload documents, QR links, passwords, or generated files to a RabPDF server.
-It does not include accounts, advertising, analytics, or remote crash reporting.
+It does not require accounts or include remote PDF processing. All tools are
+free. Android ad-enabled builds include Google AdMob and its User Messaging
+Platform. Ads use Internet access independently of local PDF processing.
+RabPDF does not pass documents, passwords, QR inputs, or generated files to ads.
+
+Google's advertising SDK may collect or share IP addresses, device identifiers,
+app interactions, and diagnostic information according to the SDK configuration
+and consent choices. Review the exact SDK disclosures before publication:
+https://developers.google.com/admob/android/privacy/play-data-disclosure
+https://policies.google.com/privacy
+
+Where required, a consent form is shown and an Ad privacy choices control lets
+you revisit choices. Advertising and consent availability never restrict PDF
+tools. Off-mode builds do not include advertising or consent SDKs. Delete the
+inapplicable build-mode description before publishing this policy.
 
 Files selected for processing and operation results are held in app memory.
 Copies made for the Android share sheet can remain in the app's cache until

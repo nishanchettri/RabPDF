@@ -1,5 +1,14 @@
 apply plugin: 'com.android.application'
 
+def adsMode = providers.gradleProperty('rabpdfAdsMode').getOrElse('off')
+if (!(adsMode in ['off', 'test', 'live'])) throw new GradleException('rabpdfAdsMode must be off, test, or live')
+def adsEnabled = adsMode != 'off'
+def adAppId = adsMode == 'test' ? 'ca-app-pub-3940256099942544~3347511713' : 'ca-app-pub-3145912084266295~7636986788'
+def adBannerId = adsMode == 'test' ? 'ca-app-pub-3940256099942544/6300978111' : 'ca-app-pub-3145912084266295/3262452491'
+if (adsMode == 'live' && (!adAppId || !adBannerId || adAppId.contains('3940256099942544') || adBannerId.contains('3940256099942544'))) {
+    throw new GradleException('Live ads require the publisher App ID and Banner ID')
+}
+
 android {
     namespace = "com.nishanchettri.rabpdf"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,14 +16,24 @@ android {
         applicationId "com.nishanchettri.rabpdf"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
+        versionCode 2
+        versionName "0.2.0"
+        buildConfigField 'boolean', 'ADS_ENABLED', adsEnabled.toString()
+        manifestPlaceholders = [admobAppId: adAppId]
+        if (adsEnabled) {
+            resValue 'string', 'admob_banner_id', adBannerId
+            manifestPlaceholders = [admobAppId: adAppId]
+        }
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
+    }
+    buildFeatures { buildConfig true }
+    if (adsEnabled) {
+        sourceSets.main.java.srcDir 'src/ads/java'
     }
     signingConfigs {
         if (System.getenv('RABPDF_KEYSTORE')) {
@@ -27,6 +46,12 @@ android {
         }
     }
     buildTypes {
+        debug {
+            if (adsEnabled) {
+                resValue 'string', 'admob_banner_id', 'ca-app-pub-3940256099942544/6300978111'
+                manifestPlaceholders = [admobAppId: 'ca-app-pub-3940256099942544~3347511713']
+            }
+        }
         release {
             if (System.getenv('RABPDF_KEYSTORE')) signingConfig signingConfigs.release
             minifyEnabled false
@@ -42,6 +67,10 @@ repositories {
 }
 
 dependencies {
+    if (adsEnabled) {
+        implementation 'com.google.android.gms:play-services-ads:25.5.0'
+        implementation 'com.google.android.ump:user-messaging-platform:4.0.0'
+    }
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
