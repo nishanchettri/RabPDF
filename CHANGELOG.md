@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.2 - 2026-10-01
+
+- Added a Link to QR shortcut immediately left of the offline badge.
+- Kept header actions on their own row to fit smaller windows.
+- Added an Android preview with the full 16-tool interface and offline processing.
+- Added Android trial gating, native save/share, build workflow, and Play Store guide.
+
 ## 1.3.1 - 2026-10-01
 
 - Removed the pale square outside the circular rabbit logo in every animation frame.

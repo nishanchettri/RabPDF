@@ -1,0 +1,29 @@
+{
+  "name": "rabpdf-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare:engine": "python scripts/export_engine.py && node scripts/vendor-runtime.mjs",
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "android": "cap sync android",
+    "ios": "cap sync ios",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/filesystem": "^8.0.0",
+    "@capacitor/share": "^8.0.0",
+    "lucide": "0.468.0",
+    "pdfjs-dist": "5.4.149",
+    "qrcode": "1.5.4",
+    "jszip": "3.10.1",
+    "pyodide": "0.29.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2",
+    "vite": "^7.0.0"
+  }
+}

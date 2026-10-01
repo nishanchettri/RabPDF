@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageSequence, ImageTk
 
 
 APP_NAME = "RabPDF"
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.3.2"
 APP_AUTHORS = "Nishan Chettri + ChatGPT 5.6 Sol Light"
 APP_WEBSITE = "https://nishanchettri.com"
 ACCENT = "#2f80ed"
@@ -268,13 +268,19 @@ class PDFStudio(tk.Tk):
         header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(0, weight=1)
         heading = ttk.Frame(header, style="Header.TFrame")
-        heading.grid(row=0, column=0, sticky="w")
+        heading.grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
         ttk.Label(heading, textvariable=self.category_var, style="Eyebrow.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(heading, textvariable=self.title_var, style="Title.TLabel").grid(row=1, column=0, sticky="w", pady=(2, 0))
         ttk.Label(heading, textvariable=self.desc_var, style="Subtitle.TLabel").grid(row=2, column=0, sticky="w", pady=(4, 0))
 
-        trust = tk.Frame(header, bg=ACCENT_SOFT, highlightthickness=1, highlightbackground="#c9e0ff")
-        trust.grid(row=0, column=1, sticky="ne", padx=(20, 0), pady=(4, 0))
+        actions = ttk.Frame(header, style="Header.TFrame")
+        actions.grid(row=0, column=0, columnspan=2, sticky="e", pady=(4, 0))
+        self.qr_shortcut = ttk.Button(
+            actions, text="Link to QR", command=lambda: self.show_tool("qr")
+        )
+        self.qr_shortcut.pack(side="left", padx=(0, 12))
+        trust = tk.Frame(actions, bg=ACCENT_SOFT, highlightthickness=1, highlightbackground="#c9e0ff")
+        trust.pack(side="left")
         tk.Label(trust, text="OFFLINE", bg=ACCENT_SOFT, fg=ACCENT_DARK, font=("Segoe UI Semibold", 8)).pack(anchor="e", padx=12, pady=(7, 0))
         tk.Label(trust, text="Files stay on this computer", bg=ACCENT_SOFT, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="e", padx=12, pady=(0, 7))
 

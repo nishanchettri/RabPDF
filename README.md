@@ -21,7 +21,16 @@ Windows may show an unknown-publisher warning because the executable is not comm
 - PDF metadata editing
 - Web links to QR codes, saved as PNG images with selectable sizes and borders
 
-## Run from source
+## Android preview
+
+The Android source is in [`mobile/`](mobile/README.md). It implements all 16
+tools with local processing. Preview APK and signed App Bundle files are in
+[`release/android/`](release/android/). Test on real devices before publishing.
+The preview includes a 24-hour trial and the planned one-time US$0.99 unlock
+screen; checkout is disabled until payment details and Play Billing are configured.
+See [`mobile/PLAY_STORE_GUIDE.md`](mobile/PLAY_STORE_GUIDE.md) for publication.
+
+## Run the desktop app from source
 
 Requirements for developers:
 
