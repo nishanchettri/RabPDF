@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1 - 2026-10-01
+
+- Removed the pale square outside the circular rabbit logo in every animation frame.
+- Added an occasional blink and a subtle ear-tip twitch.
+- Preserved the rabbit artwork, circle, animation, and QR generator.
+
 ## 1.3.0 - 2026-10-01
 
 - Added Link to QR Code under Create, with PNG output and selectable sizes and borders.

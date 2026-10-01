@@ -9,11 +9,11 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from urllib.parse import urlparse
 
-from PIL import Image, ImageSequence, ImageTk
+from PIL import Image, ImageDraw, ImageSequence, ImageTk
 
 
 APP_NAME = "RabPDF"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 APP_AUTHORS = "Nishan Chettri + ChatGPT 5.6 Sol Light"
 APP_WEBSITE = "https://nishanchettri.com"
 ACCENT = "#2f80ed"
@@ -137,6 +137,8 @@ class PDFStudio(tk.Tk):
         self.logo_frames = []
         self.logo_durations = []
         self.logo_index = 0
+        self.logo_cycles = 0
+        self.logo_blink_image = None
         self.logo_label = None
         self.icon_image = None
         self._load_brand_assets()
@@ -153,12 +155,21 @@ class PDFStudio(tk.Tk):
             if animation_path.exists():
                 with Image.open(animation_path) as animation:
                     for frame in ImageSequence.Iterator(animation):
-                        self.logo_frames.append(ImageTk.PhotoImage(frame.convert("RGBA")))
+                        self.logo_frames.append(ImageTk.PhotoImage(self._round_logo(frame)))
                         self.logo_durations.append(max(40, int(frame.info.get("duration", 65))))
+                    animation.seek(0)
+                    resting_frame = animation.convert("RGBA")
             if self.logo_frames:
                 self.logo_image = self.logo_frames[0]
+                blink_path = ASSET_DIR / "rabpdf_logo_blink.png"
+                if blink_path.exists():
+                    with Image.open(blink_path) as blink:
+                        self.logo_blink_image = ImageTk.PhotoImage(
+                            self._blink_logo(resting_frame, blink)
+                        )
             else:
-                self.logo_image = tk.PhotoImage(file=str(logo_path))
+                with Image.open(logo_path) as logo:
+                    self.logo_image = ImageTk.PhotoImage(self._round_logo(logo))
             self.icon_image = tk.PhotoImage(file=str(icon_path))
             self.iconphoto(True, self.icon_image)
         except (OSError, tk.TclError):
@@ -173,6 +184,34 @@ class PDFStudio(tk.Tk):
             except tk.TclError:
                 pass
 
+    @staticmethod
+    def _blink_logo(resting_frame, blink):
+        # Only the eyelid is taken from the generated frame; keep the original art.
+        logo = resting_frame.copy()
+        lid = blink.convert("RGBA").crop((680, 555, 800, 640))
+        lid = lid.resize((12, 9), Image.Resampling.LANCZOS)
+        mask = Image.new("L", lid.size, 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, 11, 8), fill=255)
+        logo.paste(lid, (58, 44), mask)
+        # A tiny rotation of the original ear tip keeps its painted texture.
+        ear = logo.crop((56, 8, 72, 29))
+        ear = ear.rotate(3, resample=Image.Resampling.BICUBIC,
+                         fillcolor=logo.getpixel((73, 15)))
+        logo.paste(ear, (56, 8))
+        return PDFStudio._round_logo(logo)
+
+    @staticmethod
+    def _round_logo(image):
+        logo = image.convert("RGBA")
+        mask = Image.new("L", logo.size, 0)
+        inset = round(4 * logo.width / 104)
+        ImageDraw.Draw(mask).ellipse(
+            (inset, inset, logo.width - inset - 1, logo.height - inset - 1),
+            fill=255,
+        )
+        logo.putalpha(mask)
+        return logo
+
     def _animate_logo(self):
         if not self.logo_frames or self.logo_label is None:
             return
@@ -180,6 +219,11 @@ class PDFStudio(tk.Tk):
         self.logo_label.configure(image=self.logo_image)
         delay = self.logo_durations[self.logo_index]
         self.logo_index = (self.logo_index + 1) % len(self.logo_frames)
+        if self.logo_index == 0:
+            self.logo_cycles += 1
+            if self.logo_blink_image is not None and self.logo_cycles % 2 == 0:
+                self.logo_label.configure(image=self.logo_blink_image)
+                delay = 120
         self.after(delay, self._animate_logo)
 
     def _style(self):
