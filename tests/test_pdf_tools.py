@@ -22,7 +22,7 @@ from rabpdf import (  # noqa: E402
 
 class RabPDFToolsTest(unittest.TestCase):
     def test_official_credit_is_embedded(self):
-        self.assertEqual(APP_VERSION, "1.2.1")
+        self.assertEqual(APP_VERSION, "1.3.0")
         self.assertEqual(APP_AUTHORS, "Nishan Chettri + ChatGPT 5.6 Sol Light")
         self.assertEqual(APP_WEBSITE, "https://nishanchettri.com")
 
@@ -52,6 +52,17 @@ class RabPDFToolsTest(unittest.TestCase):
 
     def assert_pdf_pages(self, path, expected):
         self.assertEqual(len(PdfReader(path).pages), expected)
+
+    def test_qr_generator(self):
+        output = self.folder / "qr.png"
+        self.app.do_qr([], str(output), {"link": "https://nishanchettri.com"})
+        with Image.open(output) as image:
+            self.assertEqual(image.format, "PNG")
+            self.assertEqual(image.width, image.height)
+            self.assertEqual(image.getpixel((0, 0)), 255)
+        for link in ("", "https://", "javascript:alert(1)", "https://bad link.com"):
+            with self.assertRaises(ValueError):
+                self.app.do_qr([], str(output), {"link": link})
 
     def test_page_parser(self):
         self.assertEqual(parse_pages("1,3,5-7", 7), [0, 2, 4, 5, 6])

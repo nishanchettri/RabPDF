@@ -19,6 +19,7 @@ Windows may show an unknown-publisher warning because the executable is not comm
 - Searchable-text and embedded-image extraction
 - Text watermarks and page numbers
 - PDF metadata editing
+- Web links to QR codes, saved as PNG images with selectable sizes and borders
 
 ## Run from source
 

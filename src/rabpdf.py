@@ -7,12 +7,13 @@ import tkinter as tk
 import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from urllib.parse import urlparse
 
 from PIL import Image, ImageSequence, ImageTk
 
 
 APP_NAME = "RabPDF"
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.3.0"
 APP_AUTHORS = "Nishan Chettri + ChatGPT 5.6 Sol Light"
 APP_WEBSITE = "https://nishanchettri.com"
 ACCENT = "#2f80ed"
@@ -44,6 +45,7 @@ TOOLS = {
     "pdf_to_images": ("PDF to images", "Render PDF pages as PNG or JPG", "Convert"),
     "text": ("Extract text", "Save searchable PDF text as a UTF-8 file", "Convert"),
     "images": ("Extract images", "Save embedded images without rendering pages", "Convert"),
+    "qr": ("Link to QR Code", "Create a scannable PNG from a web link", "Create"),
     "watermark": ("Watermark", "Add text across all or selected pages", "Annotate"),
     "numbers": ("Page numbers", "Stamp page numbers in a chosen position", "Annotate"),
     "metadata": ("Edit metadata", "Set title, author, subject, and keywords", "Annotate"),
@@ -261,7 +263,7 @@ class PDFStudio(tk.Tk):
         wordmark.pack(side="left", padx=(10, 0))
         tk.Label(wordmark, text="RabPDF", bg=SIDEBAR, fg=TEXT, font=("Segoe UI Semibold", 20)).pack(anchor="w")
         tk.Label(wordmark, text="PDF TOOLBOX", bg=SIDEBAR, fg=ACCENT, font=("Segoe UI Semibold", 8)).pack(anchor="w")
-        groups = ("Organize", "Optimize", "Security", "Convert", "Annotate")
+        groups = ("Organize", "Optimize", "Security", "Convert", "Annotate", "Create")
         for group in groups:
             tk.Label(side, text=group.upper(), bg=SIDEBAR, fg="#8a99ad", font=("Segoe UI Semibold", 8)).pack(anchor="w", padx=22, pady=(7, 3))
             for key, (name, _desc, category) in TOOLS.items():
@@ -374,29 +376,32 @@ class PDFStudio(tk.Tk):
         return frame
 
     def _build_tool(self, key):
+        requires_input = key != "qr"
         multiple = key in ("merge", "images_to_pdf")
-        input_title = "Files" if multiple else "Input file"
-        panel = self._panel(0, input_title)
-        self.file_list = tk.Listbox(
-            panel, height=5 if multiple else 3, relief="flat", bd=0,
-            highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACCENT,
-            selectmode=tk.EXTENDED, font=("Segoe UI", 9),
-            bg="#f9fbfe", fg=TEXT, selectbackground=ACCENT_SOFT,
-            selectforeground=ACCENT_DARK, activestyle="none",
-        )
-        self.file_list.grid(row=1, column=0, columnspan=4, sticky="ew")
-        label = "Add files" if multiple else "Choose file"
-        ttk.Button(panel, text=label, command=lambda: self.choose_files(multiple)).grid(row=2, column=0, sticky="w", pady=(10, 0))
-        if multiple:
-            ttk.Button(panel, text="Move up", command=lambda: self.move_file(-1)).grid(row=2, column=1, pady=(10, 0), padx=5)
-            ttk.Button(panel, text="Move down", command=lambda: self.move_file(1)).grid(row=2, column=2, pady=(10, 0), padx=5)
-        ttk.Button(panel, text="Remove", command=self.remove_files).grid(row=2, column=3, sticky="e", pady=(10, 0))
+        if requires_input:
+            input_title = "Files" if multiple else "Input file"
+            panel = self._panel(0, input_title)
+            self.file_list = tk.Listbox(
+                panel, height=5 if multiple else 3, relief="flat", bd=0,
+                highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACCENT,
+                selectmode=tk.EXTENDED, font=("Segoe UI", 9),
+                bg="#f9fbfe", fg=TEXT, selectbackground=ACCENT_SOFT,
+                selectforeground=ACCENT_DARK, activestyle="none",
+            )
+            self.file_list.grid(row=1, column=0, columnspan=4, sticky="ew")
+            label = "Add files" if multiple else "Choose file"
+            ttk.Button(panel, text=label, command=lambda: self.choose_files(multiple)).grid(row=2, column=0, sticky="w", pady=(10, 0))
+            if multiple:
+                ttk.Button(panel, text="Move up", command=lambda: self.move_file(-1)).grid(row=2, column=1, pady=(10, 0), padx=5)
+                ttk.Button(panel, text="Move down", command=lambda: self.move_file(1)).grid(row=2, column=2, pady=(10, 0), padx=5)
+            ttk.Button(panel, text="Remove", command=self.remove_files).grid(row=2, column=3, sticky="e", pady=(10, 0))
 
-        options = self._panel(1, "Options")
+        options_row = 1 if requires_input else 0
+        options = self._panel(options_row, "Options")
         options.columnconfigure(1, weight=1)
         self._tool_options(options, key)
 
-        output = self._panel(2, "Output")
+        output = self._panel(options_row + 1, "Output")
         output.columnconfigure(0, weight=1)
         self.output_var = self.var("output")
         ttk.Entry(output, textvariable=self.output_var).grid(row=1, column=0, sticky="ew")
@@ -467,6 +472,15 @@ class PDFStudio(tk.Tk):
             self._label_entry(frame, 2, "Author", "author")
             self._label_entry(frame, 3, "Subject", "subject")
             self._label_entry(frame, 4, "Keywords", "keywords")
+        elif key == "qr":
+            link = self._label_entry(frame, 1, "Web link", "link", "https://")
+            link.focus_set()
+            self._combo(frame, 2, "Size", "size", ("Small", "Medium", "Large"), "Medium")
+            self._combo(frame, 3, "Border", "border", ("Standard", "Compact"), "Standard")
+            ttk.Label(
+                frame, text="Links must begin with http:// or https://.",
+                style="Panel.TLabel", foreground=MUTED,
+            ).grid(row=4, column=1, sticky="w")
         else:
             ttk.Label(frame, text="Files will be combined in the order shown above.", style="Panel.TLabel", foreground=MUTED).grid(row=1, column=0, columnspan=2, sticky="w")
 
@@ -524,16 +538,21 @@ class PDFStudio(tk.Tk):
         if self.current_tool in folder_tools:
             path = filedialog.askdirectory(title="Choose output folder")
         else:
-            ext = ".txt" if self.current_tool == "text" else ".pdf"
-            path = filedialog.asksaveasfilename(title="Choose output file", defaultextension=ext, filetypes=[("Text", "*.txt")] if ext == ".txt" else [("PDF", "*.pdf")])
+            if self.current_tool == "text":
+                ext, types = ".txt", [("Text", "*.txt")]
+            elif self.current_tool == "qr":
+                ext, types = ".png", [("PNG image", "*.png")]
+            else:
+                ext, types = ".pdf", [("PDF", "*.pdf")]
+            path = filedialog.asksaveasfilename(title="Choose output file", defaultextension=ext, filetypes=types)
         if path:
             self.output_var.set(path)
 
     def run_tool(self):
         try:
-            if not self.files:
+            if self.current_tool != "qr" and not self.files:
                 raise ValueError("Choose at least one input file.")
-            if self.current_tool not in ("merge", "images_to_pdf") and len(self.files) != 1:
+            if self.current_tool not in ("merge", "images_to_pdf", "qr") and len(self.files) != 1:
                 raise ValueError("This tool accepts one input file.")
             output = self.output_var.get().strip()
             if not output:
@@ -554,7 +573,7 @@ class PDFStudio(tk.Tk):
 
     def _worker(self, tool, files, output, settings):
         try:
-            if tool != "compress":
+            if tool not in ("compress", "qr"):
                 require_pdf_libs()
             result = getattr(self, f"do_{tool}")(files, output, settings)
             self.after(0, self._finished, True, result)
@@ -833,6 +852,31 @@ class PDFStudio(tk.Tk):
         writer.write(output); writer.close()
         return f"Numbered {len(reader.pages)} pages."
 
+    def do_qr(self, files, output, settings):
+        import qrcode
+        from qrcode.exceptions import DataOverflowError
+
+        link = settings.get("link", "").strip()
+        parsed = urlparse(link)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname or any(c.isspace() for c in link):
+            raise ValueError("Enter a valid web link beginning with http:// or https://.")
+        if Path(output).suffix.lower() != ".png":
+            raise ValueError("Save the QR code with a .png extension.")
+        qr = qrcode.QRCode(
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size={"Small": 6, "Medium": 10, "Large": 16}[settings.get("size", "Medium")],
+            border=8 if settings.get("border", "Standard") == "Standard" else 4,
+        )
+        qr.add_data(link)
+        try:
+            qr.make(fit=True)
+        except DataOverflowError as exc:
+            raise ValueError("This link is too long for a QR code. Use a shorter link.") from exc
+        image = qr.make_image(fill_color="black", back_color="white")
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        image.save(output)
+        return f"QR code saved to {output}"
+
     def do_metadata(self, files, output, settings):
         from pypdf import PdfWriter
         reader = self._reader(files[0])
@@ -855,6 +899,12 @@ def packaged_self_test():
     from reportlab.pdfgen import canvas
 
     with tempfile.TemporaryDirectory(prefix="rabpdf_selftest_") as folder:
+        app = object.__new__(PDFStudio)
+        qr_path = Path(folder) / "qr.png"
+        app.do_qr([], str(qr_path), {"link": APP_WEBSITE})
+        with PillowImage.open(qr_path) as qr_image:
+            if qr_image.width != qr_image.height:
+                raise RuntimeError("QR generator self-test failed")
         source = Path(folder) / "source.pdf"
         pdf = canvas.Canvas(str(source))
         pdf.drawString(72, 720, "RabPDF packaged self-test")

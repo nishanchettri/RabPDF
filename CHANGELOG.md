@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0 - 2026-10-01
+
+- Added Link to QR Code under Create, with PNG output and selectable sizes and borders.
+- Bundled the QR encoder in the portable executable.
+- Added URL validation and QR generation checks to the packaged self-test.
+
 ## 1.2.1 - 2026-09-27
 
 - Embedded the complete authorship credit directly in the application and EXE metadata.
