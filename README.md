@@ -10,6 +10,15 @@ The ready-to-run Windows application is in [`release/RabPDF.exe`](release/RabPDF
 
 Windows may show an unknown-publisher warning because the executable is not commercially code-signed.
 
+Version 1.4.1 refines navigation with chevron icons, clearer selection states,
+single/batch controls, mouse-wheel scrolling, and a content-sized About window.
+Android 0.3.1 includes matching navigation and larger touch targets.
+
+For faster startup, use `release/RabPDF-FastStart.zip`: extract the entire folder
+and run `RabPDF/RabPDF.exe`. Keep its `_internal` folder beside the EXE, and pin
+that EXE to the taskbar. Unlike the single-file build, it does not extract the
+bundled runtime at each launch. Antivirus scanning can still affect startup.
+
 ## Tools
 
 Version 1.4 adds collapsible PDF/Image menus, single/batch processing, image
@@ -83,6 +92,16 @@ py -3 -m venv .venv
 ```
 
 The build machine needs Python and Internet access for dependency installation. People who receive the resulting `RabPDF.exe` need neither.
+
+To build the faster-starting folder edition instead:
+
+```powershell
+$env:RABPDF_FAST_START = "1"
+.venv\Scripts\pyinstaller --noconfirm RabPDF.spec
+```
+
+Distribute all of `dist/RabPDF/`, not just its EXE. Unset `RABPDF_FAST_START`
+to return to the single-file build.
 
 ## GitHub Actions build
 

@@ -1,6 +1,6 @@
 # RabPDF for Android
 
-Android preview 0.3.0. All tools are permanently free, with no trial or payments.
+Android preview 0.3.1. All tools are permanently free, with no trial or payments.
 PDF processing works offline. Optional AdMob ads use the network separately.
 
 All 19 desktop tools are implemented: page operations, compression, AES-256

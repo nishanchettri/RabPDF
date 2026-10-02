@@ -22,7 +22,7 @@ from rabpdf import (  # noqa: E402
 
 class RabPDFToolsTest(unittest.TestCase):
     def test_official_credit_is_embedded(self):
-        self.assertEqual(APP_VERSION, "1.4.0")
+        self.assertEqual(APP_VERSION, "1.4.1")
         self.assertEqual(APP_AUTHORS, "Nishan Chettri + ChatGPT")
         self.assertEqual(APP_WEBSITE, "https://nishanchettri.com")
 

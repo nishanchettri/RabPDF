@@ -1,5 +1,8 @@
 import './style.css';
-import {createIcons, icons} from 'lucide';
+import {createIcons, Files, Scissors, Copy, Trash2, RotateCw, Minimize2,
+  Lock, LockOpen, Image, Images, Text, ImageDown, Stamp, ListOrdered,
+  FilePen, QrCode, Maximize2, ShieldCheck, ChevronDown, ChevronRight,
+  PanelLeft, ArrowLeft, ArrowUp, ArrowDown, Plus, X, Share2, Scale, File, Play} from 'lucide';
 import {Capacitor, registerPlugin} from '@capacitor/core';
 import {Filesystem, Directory} from '@capacitor/filesystem';
 import {Share} from '@capacitor/share';
@@ -17,6 +20,10 @@ let pendingReject = null;
 let batchMode = false;
 let aiWorker = null;
 const app = document.querySelector('#app');
+const icons = {Files, Scissors, Copy, Trash2, RotateCw, Minimize2, Lock, LockOpen,
+  Image, Images, Text, ImageDown, Stamp, ListOrdered, FilePen, QrCode, Maximize2,
+  ShieldCheck, ChevronDown, ChevronRight, PanelLeft, ArrowLeft, ArrowUp, ArrowDown,
+  Plus, X, Share2, Scale, File, Play};
 const SaveFile = registerPlugin('SaveFile');
 const Ads = registerPlugin('Ads');
 let adsReady = false;
@@ -29,25 +36,32 @@ async function initializeAds() {
   try { await Ads.initialize(); adsReady=true; updateAds(); } catch { /* Ads never block tools. */ }
 }
 const escape = value => String(value).replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+function fileSize(bytes) {
+  if(bytes<1024)return `${bytes} B`;
+  if(bytes<1024*1024)return `${(bytes/1024).toFixed(1)} KB`;
+  return `${(bytes/1024/1024).toFixed(1)} MB`;
+}
 function glyph(name) { return `<i data-lucide="${name}"></i>`; }
 function render() {
-  app.innerHTML = `<header><button class="brand" id="home"><img src="/brand/rabpdf_mascot_animated.gif" alt="Rabbit"><span>RabPDF</span></button><div class="header-actions"><button id="qr" class="quiet">${glyph('qr-code')}<span>Link to QR</span></button><span class="offline">${glyph('shield-check')}<span>Offline</span></span></div></header><main id="main"></main><footer><a href="https://nishanchettri.com" target="_blank" rel="noopener">Nishan Chettri</a><span> + ChatGPT</span><span class="version">Android preview 0.2.0</span></footer>`;
+  app.innerHTML = `<header><button class="brand" id="home"><img src="/brand/rabpdf_mascot_animated.gif" alt="Rabbit"><span>RabPDF</span></button><div class="header-actions"><button id="qr" class="quiet">${glyph('qr-code')}<span>Link to QR</span></button><span class="offline">${glyph('shield-check')}<span>Offline</span></span></div></header><main id="main"></main><footer><a href="https://nishanchettri.com" target="_blank" rel="noopener">Nishan Chettri</a><span> + ChatGPT</span><span class="version">Android preview 0.3.1</span></footer>`;
   document.querySelector('#home').onclick=()=>{if(!busy) {selected=null;files=[];outputs=[];render();}};
   document.querySelector('#qr').onclick=()=>{if(!busy) open('qr');};
   const main=document.querySelector('#main');
   const navigation=document.createElement('nav');navigation.id='tool-navigation';navigation.hidden=true;
-  navigation.innerHTML=['PDF tools','Image tools'].map(group=>`<details open><summary>${group}</summary>${tools.filter(t=>t[0]!=='qr' && t[0].startsWith('image_')===(group==='Image tools')).map(t=>`<button type="button" data-nav="${t[0]}">${glyph(t[3])}<span>${t[1]}</span></button>`).join('')}</details>`).join('');
+  navigation.setAttribute('aria-label','Tools');
+  navigation.innerHTML=['PDF tools','Image tools'].map(group=>`<details open><summary><span>${group}</span>${glyph('chevron-down')}</summary>${tools.filter(t=>t[0]!=='qr' && t[0].startsWith('image_')===(group==='Image tools')).map(t=>`<button type="button" data-nav="${t[0]}" ${selected===t[0]?'aria-current="page"':''}>${glyph(t[3])}<span>${t[1]}</span></button>`).join('')}</details>`).join('');
   document.querySelector('header').after(navigation);
   navigation.querySelectorAll('[data-nav]').forEach(button=>button.onclick=()=>{if(!busy)open(button.dataset.nav);});
   const menu=document.createElement('button');menu.className='quiet';menu.setAttribute('aria-label','Tools menu');menu.setAttribute('aria-expanded','false');
   menu.innerHTML=glyph('panel-left');
+  menu.title='Tools menu';menu.setAttribute('aria-controls','tool-navigation');
   menu.onclick=()=>{navigation.hidden=!navigation.hidden;menu.setAttribute('aria-expanded',String(!navigation.hidden));};
   document.querySelector('.header-actions').prepend(menu);
   if(!selected) {
     main.innerHTML='<h1>Your PDF workspace</h1>';
     for(const group of ['PDF tools','Image tools']) {
       const section=document.createElement('section');
-      section.innerHTML=`<details open><summary>${group}</summary><div class="tool-grid">${tools.filter(t=>t[0]!=='qr' && t[0].startsWith('image_')===(group==='Image tools')).map(t=>`<button class="tool" data-tool="${t[0]}">${glyph(t[3])}<span>${t[1]}</span>${glyph('chevron-right')}</button>`).join('')}</div></details>`;
+      section.innerHTML=`<details open><summary><span>${group}</span>${glyph('chevron-down')}</summary><div class="tool-grid">${tools.filter(t=>t[0]!=='qr' && t[0].startsWith('image_')===(group==='Image tools')).map(t=>`<button class="tool" data-tool="${t[0]}">${glyph(t[3])}<span>${t[1]}</span>${glyph('chevron-right')}</button>`).join('')}</div></details>`;
       main.append(section);
     }
     main.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>open(b.dataset.tool));
@@ -57,11 +71,21 @@ function render() {
     document.querySelector('#back').onclick=()=>{if(!busy){selected=null;files=[];outputs=[];render();}};
     const picker=document.querySelector('#picker');
     if(!['merge','images_to_pdf','qr'].includes(selected)) {
-      const label=document.createElement('label');label.className='processing-mode';
+      const label=document.createElement('div');label.className='processing-mode';
       label.innerHTML='<span>Processing</span><select id="mode"><option>Single file</option><option>Batch</option></select>';
       document.querySelector('#form').prepend(label);
       label.querySelector('select').value=batchMode?'Batch':'Single file';
       label.querySelector('select').onchange=event=>{batchMode=event.target.value==='Batch';files=[];updateFiles();picker.multiple=batchMode;document.querySelector('#add span').textContent=batchMode?'Add files':'Choose file';};
+      const segments=document.createElement('div');segments.className='segments';segments.setAttribute('role','group');segments.setAttribute('aria-label','Processing');
+      segments.innerHTML=['Single file','Batch'].map(value=>`<button type="button" aria-pressed="${(value==='Batch')===batchMode}">${value}</button>`).join('');
+      label.querySelector('select').classList.add('mode-select');
+      label.querySelector('select').setAttribute('tabindex','-1');
+      label.querySelector('select').setAttribute('aria-hidden','true');
+      label.append(segments);
+      segments.querySelectorAll('button').forEach(button=>button.onclick=()=>{
+        const select=label.querySelector('select');select.value=button.textContent;select.dispatchEvent(new Event('change'));
+      });
+      label.querySelector('select').addEventListener('change',()=>segments.querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',String(button.textContent===label.querySelector('select').value))));
       picker.multiple=batchMode;
     }
     if(selected.startsWith('image_'))picker.accept='image/png,image/jpeg,image/tiff,image/bmp,image/gif';
@@ -94,13 +118,14 @@ function render() {
   createIcons({icons});
   const footer=document.querySelector('footer');
   footer.querySelector('span').textContent=' + ChatGPT';
-  footer.querySelector('.version').textContent='Android preview 0.3.0';
+  footer.querySelector('.version').textContent='Android preview 0.3.1';
+  document.querySelectorAll('button[aria-label]').forEach(button=>button.title=button.getAttribute('aria-label'));
   updateAds();
 }
 function open(tool){selected=tool;files=[];outputs=[];batchMode=false;render();}
 function updateFiles(){
   const list=document.querySelector('#file-list');
-  list.innerHTML=files.map((file,i)=>`<li><div>${glyph('file')}<span>${escape(file.name)}<small>${(file.size/1024/1024).toFixed(1)} MB</small></span></div><div class="file-actions">${['merge','images_to_pdf'].includes(selected)?`<button type="button" data-up="${i}" aria-label="Move up" ${i===0?'disabled':''}>${glyph('arrow-up')}</button><button type="button" data-down="${i}" aria-label="Move down" ${i===files.length-1?'disabled':''}>${glyph('arrow-down')}</button>`:''}<button type="button" data-remove="${i}" aria-label="Remove file">${glyph('x')}</button></div></li>`).join('');
+  list.innerHTML=files.map((file,i)=>`<li><div>${glyph('file')}<span>${escape(file.name)}<small>${fileSize(file.size)}</small></span></div><div class="file-actions">${['merge','images_to_pdf'].includes(selected)?`<button type="button" data-up="${i}" aria-label="Move up" ${i===0?'disabled':''}>${glyph('arrow-up')}</button><button type="button" data-down="${i}" aria-label="Move down" ${i===files.length-1?'disabled':''}>${glyph('arrow-down')}</button>`:''}<button type="button" data-remove="${i}" aria-label="Remove file">${glyph('x')}</button></div></li>`).join('');
   list.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{files.splice(Number(b.dataset.remove),1);updateFiles();});
   for(const [key,offset] of [['up',-1],['down',1]]) list.querySelectorAll(`[data-${key}]`).forEach(b=>b.onclick=()=>{const n=Number(b.dataset[key]);[files[n],files[n+offset]]=[files[n+offset],files[n]];updateFiles();});
   createIcons({icons});

@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+import os
 
 root = Path(SPEC).resolve().parent
 
@@ -26,12 +27,13 @@ a = Analysis(
     optimize=0,
 )
 pyz = PYZ(a.pure)
+fast_start = os.environ.get("RABPDF_FAST_START") == "1"
 
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
+    [] if fast_start else a.binaries,
+    [] if fast_start else a.datas,
     [],
     name="RabPDF",
     debug=False,
@@ -46,4 +48,7 @@ exe = EXE(
     entitlements_file=None,
     icon=str(root / "assets" / "rabpdf_icon.ico"),
     version=str(root / "version_info.txt"),
+    exclude_binaries=fast_start,
 )
+if fast_start:
+    app = COLLECT(exe, a.binaries, a.datas, strip=False, upx=True, name="RabPDF")

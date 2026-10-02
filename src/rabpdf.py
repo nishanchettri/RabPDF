@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageSequence, ImageTk
 
 
 APP_NAME = "RabPDF"
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.4.1"
 APP_AUTHORS = "Nishan Chettri + ChatGPT"
 APP_WEBSITE = "https://nishanchettri.com"
 ACCENT = "#2f80ed"
@@ -184,6 +184,17 @@ class ScrollFrame(ttk.Frame):
         bar.pack(side="right", fill="y")
         self.body.bind("<Configure>", lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self.window, width=e.width))
+        self.bind_all("<MouseWheel>", self._wheel, add="+")
+
+    def _wheel(self, event):
+        widget = event.widget
+        while widget is not None:
+            if widget == self:
+                bounds = self.canvas.bbox("all")
+                if bounds and bounds[3] > self.canvas.winfo_height():
+                    self.canvas.yview_scroll(-int(event.delta / 120), "units")
+                return
+            widget = getattr(widget, "master", None)
 
 
 class PDFStudio(tk.Tk):
@@ -205,6 +216,8 @@ class PDFStudio(tk.Tk):
         self.logo_blink_image = None
         self.logo_label = None
         self.icon_image = None
+        self.nav_icons = {}
+        self.nav_groups = {}
         self._load_brand_assets()
         self._style()
         self._layout()
@@ -298,11 +311,11 @@ class PDFStudio(tk.Tk):
         except tk.TclError:
             pass
         style.configure("TFrame", background=BG)
-        style.configure("Panel.TFrame", background=PANEL, relief="solid", borderwidth=1, bordercolor=BORDER)
+        style.configure("Panel.TFrame", background=PANEL, relief="flat", borderwidth=0)
         style.configure("Header.TFrame", background=BG)
         style.configure("TLabel", background=BG, foreground=TEXT, font=("Segoe UI", 10))
         style.configure("Panel.TLabel", background=PANEL, foreground=TEXT, font=("Segoe UI", 10))
-        style.configure("Title.TLabel", background=BG, foreground=TEXT, font=("Segoe UI Semibold", 24))
+        style.configure("Title.TLabel", background=BG, foreground=TEXT, font=("Segoe UI Semibold", 22))
         style.configure("Subtitle.TLabel", background=BG, foreground=MUTED, font=("Segoe UI", 10))
         style.configure("Eyebrow.TLabel", background=BG, foreground=ACCENT, font=("Segoe UI Semibold", 8))
         style.configure("Section.TLabel", background=PANEL, foreground=TEXT, font=("Segoe UI Semibold", 11))
@@ -313,6 +326,9 @@ class PDFStudio(tk.Tk):
         style.map("TButton", background=[("active", "#dfeafb")])
         style.configure("TEntry", fieldbackground="#fbfdff", bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER, padding=8)
         style.configure("TCombobox", fieldbackground="#fbfdff", bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER, padding=7)
+        style.map("TEntry", bordercolor=[("focus", ACCENT)])
+        style.map("TCombobox", bordercolor=[("focus", ACCENT)], fieldbackground=[("readonly", "#fbfdff")], selectbackground=[("readonly", ACCENT_SOFT)], selectforeground=[("readonly", TEXT)])
+        style.configure("Mode.TRadiobutton", background=PANEL, foreground=TEXT, padding=(12, 8), font=("Segoe UI", 10))
         style.configure("Horizontal.TProgressbar", background=ACCENT, troughcolor=ACCENT_SOFT)
 
     def _layout(self):
@@ -335,7 +351,6 @@ class PDFStudio(tk.Tk):
         heading.grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
         ttk.Label(heading, textvariable=self.category_var, style="Eyebrow.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(heading, textvariable=self.title_var, style="Title.TLabel").grid(row=1, column=0, sticky="w", pady=(2, 0))
-        ttk.Label(heading, textvariable=self.desc_var, style="Subtitle.TLabel").grid(row=2, column=0, sticky="w", pady=(4, 0))
 
         actions = ttk.Frame(header, style="Header.TFrame")
         actions.grid(row=0, column=0, columnspan=2, sticky="e", pady=(4, 0))
@@ -379,29 +394,35 @@ class PDFStudio(tk.Tk):
         tk.Label(wordmark, text="RabPDF", bg=SIDEBAR, fg=TEXT, font=("Segoe UI Semibold", 20)).pack(anchor="w")
         tk.Label(wordmark, text="PDF TOOLBOX", bg=SIDEBAR, fg=ACCENT, font=("Segoe UI Semibold", 8)).pack(anchor="w")
         menu = ScrollFrame(side)
+        self.menu_scroller = menu
         menu.pack(fill="both", expand=True)
         for group in ("PDF tools", "Image tools"):
             section = tk.Frame(menu.body, bg=SIDEBAR)
             section.pack(fill="x")
             content = tk.Frame(section, bg=SIDEBAR)
-            toggle = tk.Button(section, text=f">  {group}", anchor="w", relief="flat", bg=SIDEBAR,
-                               fg=TEXT, font=("Segoe UI Semibold", 10), padx=18, pady=9)
-            toggle.pack(fill="x")
+            toggle = tk.Button(section, text=group, image=self._chevron(False), compound="left",
+                               anchor="w", relief="flat", bd=0, bg=SIDEBAR, cursor="hand2",
+                               activebackground=ACCENT_SOFT, activeforeground=ACCENT_DARK,
+                               fg=TEXT, font=("Segoe UI Semibold", 10), padx=14, pady=12)
+            toggle.pack(fill="x", padx=8, pady=(4, 2))
             def collapse(body=content, button=toggle, title=group):
                 if body.winfo_manager():
-                    body.pack_forget(); button.configure(text=f">  {title}")
+                    body.pack_forget()
+                    button.configure(image=self._chevron(False))
                 else:
-                    body.pack(fill="x"); button.configure(text=f"v  {title}")
+                    body.pack(fill="x")
+                    button.configure(image=self._chevron(True))
             toggle.configure(command=collapse)
+            self.nav_groups[group] = (content, toggle)
             for key, (name, _desc, category) in TOOLS.items():
                 if key == "qr" or (key in IMAGE_TOOLS) != (group == "Image tools"):
                     continue
                 button = tk.Button(
                     content, text=name, anchor="w", relief="flat", bd=0, cursor="hand2",
                     bg=SIDEBAR, fg="#44536a", activebackground=SIDEBAR_ACTIVE, activeforeground=TEXT,
-                    font=("Segoe UI", 9), padx=22, pady=5, command=lambda k=key: self.show_tool(k)
+                    font=("Segoe UI", 9), padx=22, pady=8, command=lambda k=key: self.show_tool(k)
                 )
-                button.pack(fill="x")
+                button.pack(fill="x", padx=12, pady=1)
                 self.tool_buttons[key] = button
         footer = tk.Frame(side, bg=SIDEBAR)
         footer.pack(side="bottom", fill="x", padx=16, pady=(8, 14))
@@ -424,13 +445,20 @@ class PDFStudio(tk.Tk):
             fg="#9aa6b7", font=("Segoe UI", 7),
         ).pack(anchor="w")
 
+    def _chevron(self, expanded):
+        if expanded not in self.nav_icons:
+            image = Image.new("RGBA", (88, 64), (0, 0, 0, 0))
+            points = [(20, 24), (32, 36), (44, 24)] if expanded else [(24, 20), (36, 32), (24, 44)]
+            ImageDraw.Draw(image).line(points, fill=MUTED, width=6, joint="curve")
+            self.nav_icons[expanded] = ImageTk.PhotoImage(image.resize((22, 16), Image.Resampling.LANCZOS))
+        return self.nav_icons[expanded]
+
     def open_author_site(self):
         webbrowser.open_new_tab(APP_WEBSITE)
 
     def show_about(self):
         about = tk.Toplevel(self)
         about.title(f"About {APP_NAME}")
-        about.geometry("440x360")
         about.resizable(False, False)
         about.transient(self)
         about.grab_set()
@@ -466,12 +494,28 @@ class PDFStudio(tk.Tk):
             font=("Segoe UI", 8),
         ).pack()
         ttk.Button(about, text="Close", command=about.destroy).pack(pady=(18, 0))
+        about.update_idletasks()
+        width = max(440, about.winfo_reqwidth() + 32)
+        height = about.winfo_reqheight() + 24
+        x = max(0, self.winfo_rootx() + (self.winfo_width() - width) // 2)
+        y = max(0, self.winfo_rooty() + (self.winfo_height() - height) // 2)
+        about.geometry(f"{width}x{height}+{x}+{y}")
         about.protocol("WM_DELETE_WINDOW", about.destroy)
 
     def show_tool(self, key):
         if self.busy:
             return
         self.current_tool = key
+        if key != "qr":
+            selected_group = "Image tools" if key in IMAGE_TOOLS else "PDF tools"
+            for group, (other_body, other_toggle) in self.nav_groups.items():
+                if group != selected_group:
+                    other_body.pack_forget()
+                    other_toggle.configure(image=self._chevron(False))
+            body, toggle = self.nav_groups[selected_group]
+            body.pack(fill="x")
+            toggle.configure(image=self._chevron(True))
+            self.menu_scroller.canvas.yview_moveto(0)
         self.files = []
         for child in self.scroller.body.winfo_children():
             child.destroy()
@@ -496,7 +540,7 @@ class PDFStudio(tk.Tk):
         return self.vars[name]
 
     def _panel(self, row, title):
-        frame = ttk.Frame(self.scroller.body, style="Panel.TFrame", padding=20)
+        frame = ttk.Frame(self.scroller.body, style="Panel.TFrame", padding=(20, 16))
         frame.grid(row=row, column=0, sticky="ew", pady=(0, 14))
         frame.columnconfigure(0, weight=1)
         ttk.Label(frame, text=title, style="Section.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 12))
@@ -509,7 +553,7 @@ class PDFStudio(tk.Tk):
             input_title = "Files" if multiple else "Input file"
             panel = self._panel(0, input_title)
             self.file_list = tk.Listbox(
-                panel, height=5 if multiple else 3, relief="flat", bd=0,
+                panel, height=4 if multiple else 3, relief="flat", bd=0,
                 highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACCENT,
                 selectmode=tk.EXTENDED, font=("Segoe UI", 9),
                 bg="#f9fbfe", fg=TEXT, selectbackground=ACCENT_SOFT,
@@ -517,7 +561,7 @@ class PDFStudio(tk.Tk):
             )
             self.file_list.grid(row=1, column=0, columnspan=4, sticky="ew")
             ttk.Button(panel, text="Choose files", command=lambda: self.choose_files(self.vars.get("mode", tk.StringVar(value="Batch")).get() == "Batch" or key in ("merge", "images_to_pdf"))).grid(row=2, column=0, sticky="w", pady=(10, 0))
-            if multiple:
+            if key in ("merge", "images_to_pdf"):
                 ttk.Button(panel, text="Move up", command=lambda: self.move_file(-1)).grid(row=2, column=1, pady=(10, 0), padx=5)
                 ttk.Button(panel, text="Move down", command=lambda: self.move_file(1)).grid(row=2, column=2, pady=(10, 0), padx=5)
             ttk.Button(panel, text="Remove", command=self.remove_files).grid(row=2, column=3, sticky="e", pady=(10, 0))
@@ -527,8 +571,13 @@ class PDFStudio(tk.Tk):
         options.columnconfigure(1, weight=1)
         self._tool_options(options, key)
         if key not in ("merge", "images_to_pdf", "qr"):
-            mode = self._combo(options, 10, "Processing", "mode", ("Single file", "Batch"))
-            mode.bind("<<ComboboxSelected>>", lambda _event: self.output_var.set(self.suggest_output() if self.files else ""))
+            ttk.Label(options, text="Processing", style="Panel.TLabel").grid(row=10, column=0, sticky="w", pady=8)
+            modes = ttk.Frame(options, style="Panel.TFrame")
+            modes.grid(row=10, column=1, sticky="w", pady=8)
+            mode = self.var("mode", "Single file")
+            for value in ("Single file", "Batch"):
+                ttk.Radiobutton(modes, text=value, value=value, variable=mode, style="Mode.TRadiobutton",
+                                command=lambda: self.output_var.set(self.suggest_output() if self.files else "")).pack(side="left")
 
         output = self._panel(options_row + 1, "Output")
         output.columnconfigure(0, weight=1)
