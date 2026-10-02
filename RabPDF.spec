@@ -8,6 +8,8 @@ a = Analysis(
     pathex=[str(root / "src")],
     binaries=[],
     datas=[
+        (str(root / "assets" / "image-super-resolution.onnx"), "."),
+        (str(root / "assets" / "ONNX-ModelZoo-LICENSE.txt"), "."),
         (str(root / "assets" / "rabpdf_mascot_animated.gif"), "."),
         (str(root / "assets" / "rabpdf_logo_72.png"), "."),
         (str(root / "assets" / "rabpdf_logo_32.png"), "."),

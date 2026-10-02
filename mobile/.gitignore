@@ -5,6 +5,7 @@ public/wheels/
 public/pdf_engine.py
 public/brand/
 public/pdfjs/
+public/ort/
 **/*.jks
 **/*.keystore
 signing*.json

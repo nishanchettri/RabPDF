@@ -1,11 +1,12 @@
 # RabPDF for Android
 
-Android preview 0.2.0. All tools are permanently free, with no trial or payments.
+Android preview 0.3.0. All tools are permanently free, with no trial or payments.
 PDF processing works offline. Optional AdMob ads use the network separately.
 
-All 16 desktop tools are implemented: page operations, compression, AES-256
+All 19 desktop tools are implemented: page operations, compression, AES-256
 protection and authorized unlocking, image conversions, text/image extraction,
-watermarks, numbering, metadata, and QR generation. The PDF engine is exported
+watermarks, numbering, metadata, QR generation, image conversion, target-size
+image compression, and on-device AI image upscaling. The PDF engine is exported
 from the desktop source and executes inside a bundled Pyodide worker. PDF.js
 renders PDF pages. Output files can be saved through Android's document picker
 or shared with another app. No account or document uploads are required.
@@ -42,6 +43,26 @@ The release App Bundle is at
 signed using your private upload key before submission to Google Play.
 
 ## Verification and limits
+
+PDF tools and Image tools have collapsible menus. QR is available only through
+the header shortcut. Independent operations support Single file or Batch; merge
+and Images to PDF intentionally combine their input files. Batch exports with
+multiple results use a ZIP.
+
+Estimate size runs the chosen PDF/image compressor in memory without saving an
+output. It reports the actual preview size, not a guessed guaranteed reduction.
+PDF compression presets are unchanged. Image 2x/4x/8x compression means a byte
+target of original size divided by that factor; quality and dimensions can be
+reduced to meet it. An unreachable target produces an error rather than a false
+success. KB/MB here use 1024/1048576 bytes.
+
+Image conversions support PNG, JPG, BMP, TIFF, and single-frame GIF. JPEG/BMP
+flatten transparency on white; animated/multipage images are rejected. Upscaling
+offers AI reconstruction or Lanczos at 2x/3x. The local 240 KB ESPCN model is
+non-generative, reconstructs luminance, and preserves source chroma/alpha with
+interpolation. Native AI scale is 3x; 2x downsamples that result. It is not a
+diffusion redraw and cannot guarantee true missing detail. AI intermediate size
+is limited to 12 million pixels. CPU speed depends on the phone.
 
 The previous trial and planned paid unlock have been removed. No ad view,
 consent choice, ad availability, payment, or network connection gates tools.

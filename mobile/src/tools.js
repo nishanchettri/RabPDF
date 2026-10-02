@@ -15,6 +15,9 @@ export const tools = [
   ['numbers','Page numbers','Annotate','list-ordered'],
   ['metadata','Edit metadata','Annotate','file-pen'],
   ['qr','Link to QR','Create','qr-code'],
+  ['image_compress','Compress image','Image tools','minimize-2'],
+  ['image_upscale','Upscale image','Image tools','maximize-2'],
+  ['image_convert','Convert image','Image tools','image'],
 ];
 export const fields = {
   split: [['ranges','Ranges','text','']],
@@ -30,6 +33,9 @@ export const fields = {
   numbers: [['position','Position',['Bottom center','Bottom right','Bottom left','Top center','Top right','Top left']],['start','Start number','number','1'],['prefix','Prefix','text','']],
   metadata: [['title','Title','text',''],['author','Author','text',''],['subject','Subject','text',''],['keywords','Keywords','text','']],
   qr: [['link','Web link','url','https://'],['size','Size',['Small','Medium','Large'],'Medium'],['border','Border',['Standard','Compact']]],
+  image_compress: [['format','Output format',['JPG','PNG','BMP','TIFF','GIF'],'JPG'],['compression','Compression',['Quality preset','Target size','2x','4x','8x']],['target','Target size','number','100'],['unit','Unit',['KB','MB']]],
+  image_upscale: [['format','Output format',['PNG','JPG','BMP','TIFF','GIF']],['scale','Scale',['2x','3x'],'3x'],['engine','Method',['AI reconstruction','Lanczos']]],
+  image_convert: [['format','Output format',['PNG','JPG','BMP','TIFF','GIF']]],
 };
 export function parsePages(spec, total) {
   if (!spec.trim()) return Array.from({length:total},(_,i)=>i);

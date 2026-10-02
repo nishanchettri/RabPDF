@@ -2,7 +2,7 @@
 
 RabPDF is a private, offline Windows desktop toolbox for common PDF operations. Version 1.2 introduces a quieter minimal blue interface and a hand-painted Ghibli-style animated rabbit mascot.
 
-Created by **[Nishan Chettri](https://nishanchettri.com) + ChatGPT 5.6 Sol Light**.
+Created by **[Nishan Chettri](https://nishanchettri.com) + ChatGPT**.
 
 ## Download
 
@@ -11,6 +11,18 @@ The ready-to-run Windows application is in [`release/RabPDF.exe`](release/RabPDF
 Windows may show an unknown-publisher warning because the executable is not commercially code-signed.
 
 ## Tools
+
+Version 1.4 adds collapsible PDF/Image menus, single/batch processing, image
+conversion (PNG/JPG/BMP/TIFF/GIF), target-size image compression, and offline
+AI image super-resolution. QR remains in the header only. PDF compression
+presets are unchanged; Estimate size runs a temporary preview without saving.
+Repeated Windows launches restore the existing app window. Replace the old
+EXE at the path used by your pinned shortcut, or unpin and pin the new EXE.
+
+The bundled 240 KB ESPCN model reconstructs the same image, not a generative
+redraw. AI supports native 3x or 2x from the 3x result; Lanczos is also available.
+No AI model can guarantee exact recovery of detail absent from the input.
+See mobile/README.md for format, size, and memory limits shared by both apps.
 
 - Merge, split, extract, remove, and rotate pages
 - Built-in lossless and image-based PDF compression

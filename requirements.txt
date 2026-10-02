@@ -4,3 +4,4 @@ pypdf>=6,<7
 pypdfium2>=4,<6
 reportlab>=4,<5
 qrcode>=8,<9
+onnxruntime>=1.30,<2

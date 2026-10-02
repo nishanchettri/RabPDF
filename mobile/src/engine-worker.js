@@ -22,15 +22,26 @@ self.onmessage = async ({data}) => {
       engine.FS.writeFile(path, new Uint8Array(file.bytes));
       paths.push(path);
     }
-    const folder = ['split','images'].includes(tool);
-    const output = folder ? '/job/output' : `/job/output/rabpdf_${tool}.${tool==='text'?'txt':'pdf'}`;
-    engine.globals.set('_job_json', JSON.stringify({tool,paths,output,settings}));
-    const message = await engine.runPythonAsync('job=json.loads(_job_json)\ngetattr(PDFEngine(), "do_"+job["tool"])(job["paths"], job["output"], job["settings"])');
-    const outputs = [];
-    for (const name of engine.FS.readdir('/job/output').filter(n=>!['.','..'].includes(n))) {
-      const bytes = engine.FS.readFile('/job/output/'+name);
-      outputs.push({name, bytes});
+    const jobs = settings.mode==='Batch' && !['merge','images_to_pdf'].includes(tool) ? paths.map(p=>[p]) : [paths];
+    const messages=[];
+    for(const [index, inputs] of jobs.entries()) {
+      const folder = ['split','images'].includes(tool);
+      const ext=tool.startsWith('image_')?({JPG:'jpg',PNG:'png',BMP:'bmp',TIFF:'tiff',GIF:'gif'}[settings.format]||'png'):tool==='text'?'txt':'pdf';
+      const name=`${index+1}_rabpdf_${tool}`;
+      const output = folder ? `/job/output/${name}` : `/job/output/${name}.${ext}`;
+      engine.globals.set('_job_json', JSON.stringify({tool,paths:inputs,output,settings}));
+      messages.push(await engine.runPythonAsync('job=json.loads(_job_json)\ngetattr(PDFEngine(), "do_"+job["tool"])(job["paths"], job["output"], job["settings"])'));
     }
+    const message=messages.join('\n');
+    const outputs = [];
+    function collect(path,prefix='') {
+      for(const name of engine.FS.readdir(path).filter(n=>!['.','..'].includes(n))) {
+        const full=path+'/'+name;
+        if(engine.FS.isDir(engine.FS.stat(full).mode))collect(full,prefix+name+'_');
+        else outputs.push({name:prefix+name,bytes:engine.FS.readFile(full)});
+      }
+    }
+    collect('/job/output');
     await engine.runPythonAsync('shutil.rmtree("/job", ignore_errors=True)');
     self.postMessage({id, message, outputs}, outputs.map(x=>x.bytes.buffer));
   } catch(error) {

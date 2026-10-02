@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0 / Android 0.3.0 - 2026-10-02
+
+- Grouped PDF/Image tools into collapsible menus; QR remains in the header only.
+- Added single/batch independent processing, image conversion, and size-target compression.
+- Added measured compression previews while keeping PDF quality presets unchanged.
+- Added bundled non-generative AI image super-resolution and a Lanczos option.
+- Added Windows single-instance activation for repeated taskbar launches.
+- Simplified the author credit to Nishan Chettri + ChatGPT.
+
 ## Android 0.2.0 - 2026-10-01
 
 - Removed the trial and paid unlock: all tools are permanently free.

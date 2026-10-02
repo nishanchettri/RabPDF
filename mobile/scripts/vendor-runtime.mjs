@@ -3,6 +3,9 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 
 const runtime = resolve('public/runtime');
+await mkdir('public/ort',{recursive:true});
+for(const name of ['ort.wasm.min.js','ort-wasm-simd-threaded.mjs','ort-wasm-simd-threaded.wasm'])
+  await cp('node_modules/onnxruntime-web/dist/'+name,'public/ort/'+name);
 await mkdir(runtime, { recursive: true });
 await cp(await realpath('node_modules/pyodide'), runtime, { recursive: true, dereference: true });
 for (const folder of ['cmaps', 'standard_fonts', 'wasm'])

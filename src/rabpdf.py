@@ -13,8 +13,8 @@ from PIL import Image, ImageDraw, ImageSequence, ImageTk
 
 
 APP_NAME = "RabPDF"
-APP_VERSION = "1.3.2"
-APP_AUTHORS = "Nishan Chettri + ChatGPT 5.6 Sol Light"
+APP_VERSION = "1.4.0"
+APP_AUTHORS = "Nishan Chettri + ChatGPT"
 APP_WEBSITE = "https://nishanchettri.com"
 ACCENT = "#2f80ed"
 ACCENT_DARK = "#1f65c5"
@@ -38,7 +38,7 @@ TOOLS = {
     "extract": ("Extract pages", "Create a new PDF from selected pages", "Organize"),
     "remove": ("Remove pages", "Delete selected pages from a PDF", "Organize"),
     "rotate": ("Rotate PDF", "Rotate all or selected pages", "Organize"),
-    "compress": ("Compress PDF", "Reduce file size with Ghostscript", "Optimize"),
+    "compress": ("Compress PDF", "Optimize PDF size", "Optimize"),
     "protect": ("Protect PDF", "Add an open password and permissions", "Security"),
     "unlock": ("Unlock PDF", "Remove password protection you are authorized to remove", "Security"),
     "images_to_pdf": ("Images to PDF", "Combine PNG, JPG, TIFF, or BMP images", "Convert"),
@@ -49,7 +49,71 @@ TOOLS = {
     "watermark": ("Watermark", "Add text across all or selected pages", "Annotate"),
     "numbers": ("Page numbers", "Stamp page numbers in a chosen position", "Annotate"),
     "metadata": ("Edit metadata", "Set title, author, subject, and keywords", "Annotate"),
+    "image_compress": ("Compress image", "Reduce image file size", "Image tools"),
+    "image_upscale": ("Upscale image", "Enlarge image dimensions", "Image tools"),
+    "image_convert": ("Convert image", "Change image format", "Image tools"),
 }
+
+IMAGE_TOOLS = ("image_compress", "image_upscale", "image_convert")
+IMAGE_FORMATS = ("PNG", "JPG", "BMP", "TIFF", "GIF")
+
+def compression_target(settings, original_size):
+    mode = settings.get("compression", "Quality preset")
+    if mode in ("2x", "4x", "8x"):
+        return max(1, original_size // int(mode[:-1]))
+    if mode == "Target size":
+        import math
+        value = float(settings.get("target", ""))
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError("Target size must be a positive finite number.")
+        return max(1, int(value * (1024 if settings.get("unit", "KB") == "KB" else 1024 ** 2)))
+    return None
+
+def image_extension(settings):
+    return {"JPG": ".jpg", "PNG": ".png", "BMP": ".bmp", "TIFF": ".tiff", "GIF": ".gif"}[settings.get("format", "PNG")]
+
+def encode_image(image, format_name, quality=90):
+    from PIL import Image
+    stream = io.BytesIO()
+    if format_name in ("JPG", "BMP"):
+        rgba = image.convert("RGBA")
+        background = Image.new("RGB", rgba.size, "white")
+        background.paste(rgba, mask=rgba.getchannel("A"))
+        image = background
+    options = {"quality": quality, "optimize": True} if format_name == "JPG" else {}
+    if format_name == "PNG": options = {"optimize": True}
+    image.save(stream, format="JPEG" if format_name == "JPG" else format_name, **options)
+    return stream.getvalue()
+
+def ai_upscale(image, scale):
+    import numpy as np
+    import onnxruntime as ort
+    from PIL import Image
+    if scale not in (2, 3): raise ValueError("AI reconstruction supports 2x or native 3x.")
+    if image.width * image.height * 9 > 12000000:
+        raise ValueError("AI preview exceeds 12 million pixels. Use a smaller input image.")
+    if not hasattr(ai_upscale, "session"):
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 2
+        ai_upscale.session = ort.InferenceSession(str(ASSET_DIR / "image-super-resolution.onnx"), options, providers=["CPUExecutionProvider"])
+    session = ai_upscale.session
+    y, cb, cr = image.convert("RGB").convert("YCbCr").split()
+    values = np.asarray(y, dtype=np.float32) / 255
+    result = np.empty((image.height * 3, image.width * 3), dtype=np.uint8)
+    # Overlapping tiles avoid resizing the source and exclude convolution border seams.
+    for top in range(0, image.height, 192):
+        for left in range(0, image.width, 192):
+            rows = np.clip(np.arange(top - 16, top + 208), 0, image.height - 1)
+            columns = np.clip(np.arange(left - 16, left + 208), 0, image.width - 1)
+            tile = values[np.ix_(rows, columns)][None, None]
+            prediction = session.run(None, {session.get_inputs()[0].name: tile})[0][0, 0]
+            height, width = min(192, image.height - top), min(192, image.width - left)
+            result[top * 3:(top + height) * 3, left * 3:(left + width) * 3] = np.rint(np.clip(prediction[48:48 + height * 3, 48:48 + width * 3], 0, 1) * 255).astype(np.uint8)
+    size = (image.width * 3, image.height * 3)
+    output = Image.merge("YCbCr", (Image.fromarray(result), cb.resize(size, Image.Resampling.BICUBIC), cr.resize(size, Image.Resampling.BICUBIC))).convert("RGBA")
+    output.putalpha(image.getchannel("A").resize(size, Image.Resampling.BICUBIC))
+    if scale == 2: output = output.resize((image.width * 2, image.height * 2), Image.Resampling.LANCZOS)
+    return output
 
 
 def human_size(size):
@@ -304,6 +368,7 @@ class PDFStudio(tk.Tk):
         side = tk.Frame(self, bg=SIDEBAR, width=252, highlightthickness=1, highlightbackground=BORDER)
         side.grid(row=0, column=0, sticky="nsw")
         side.grid_propagate(False)
+        side.pack_propagate(False)
         brand = tk.Frame(side, bg=SIDEBAR)
         brand.pack(fill="x", padx=18, pady=(18, 12))
         if self.logo_image:
@@ -313,14 +378,26 @@ class PDFStudio(tk.Tk):
         wordmark.pack(side="left", padx=(10, 0))
         tk.Label(wordmark, text="RabPDF", bg=SIDEBAR, fg=TEXT, font=("Segoe UI Semibold", 20)).pack(anchor="w")
         tk.Label(wordmark, text="PDF TOOLBOX", bg=SIDEBAR, fg=ACCENT, font=("Segoe UI Semibold", 8)).pack(anchor="w")
-        groups = ("Organize", "Optimize", "Security", "Convert", "Annotate", "Create")
-        for group in groups:
-            tk.Label(side, text=group.upper(), bg=SIDEBAR, fg="#8a99ad", font=("Segoe UI Semibold", 8)).pack(anchor="w", padx=22, pady=(7, 3))
+        menu = ScrollFrame(side)
+        menu.pack(fill="both", expand=True)
+        for group in ("PDF tools", "Image tools"):
+            section = tk.Frame(menu.body, bg=SIDEBAR)
+            section.pack(fill="x")
+            content = tk.Frame(section, bg=SIDEBAR)
+            toggle = tk.Button(section, text=f">  {group}", anchor="w", relief="flat", bg=SIDEBAR,
+                               fg=TEXT, font=("Segoe UI Semibold", 10), padx=18, pady=9)
+            toggle.pack(fill="x")
+            def collapse(body=content, button=toggle, title=group):
+                if body.winfo_manager():
+                    body.pack_forget(); button.configure(text=f">  {title}")
+                else:
+                    body.pack(fill="x"); button.configure(text=f"v  {title}")
+            toggle.configure(command=collapse)
             for key, (name, _desc, category) in TOOLS.items():
-                if category != group:
+                if key == "qr" or (key in IMAGE_TOOLS) != (group == "Image tools"):
                     continue
                 button = tk.Button(
-                    side, text=name, anchor="w", relief="flat", bd=0, cursor="hand2",
+                    content, text=name, anchor="w", relief="flat", bd=0, cursor="hand2",
                     bg=SIDEBAR, fg="#44536a", activebackground=SIDEBAR_ACTIVE, activeforeground=TEXT,
                     font=("Segoe UI", 9), padx=22, pady=5, command=lambda k=key: self.show_tool(k)
                 )
@@ -336,7 +413,7 @@ class PDFStudio(tk.Tk):
             font=("Segoe UI", 8), padx=0, pady=2, command=self.show_about,
         ).pack(fill="x")
         tk.Button(
-            footer, text="Nishan Chettri + ChatGPT 5.6 Sol Light",
+            footer, text=APP_AUTHORS,
             anchor="w", relief="flat", bd=0, cursor="hand2",
             bg=SIDEBAR, fg="#73839a", activebackground=SIDEBAR,
             activeforeground=ACCENT, font=("Segoe UI", 7, "underline"),
@@ -427,7 +504,7 @@ class PDFStudio(tk.Tk):
 
     def _build_tool(self, key):
         requires_input = key != "qr"
-        multiple = key in ("merge", "images_to_pdf")
+        multiple = True
         if requires_input:
             input_title = "Files" if multiple else "Input file"
             panel = self._panel(0, input_title)
@@ -439,8 +516,7 @@ class PDFStudio(tk.Tk):
                 selectforeground=ACCENT_DARK, activestyle="none",
             )
             self.file_list.grid(row=1, column=0, columnspan=4, sticky="ew")
-            label = "Add files" if multiple else "Choose file"
-            ttk.Button(panel, text=label, command=lambda: self.choose_files(multiple)).grid(row=2, column=0, sticky="w", pady=(10, 0))
+            ttk.Button(panel, text="Choose files", command=lambda: self.choose_files(self.vars.get("mode", tk.StringVar(value="Batch")).get() == "Batch" or key in ("merge", "images_to_pdf"))).grid(row=2, column=0, sticky="w", pady=(10, 0))
             if multiple:
                 ttk.Button(panel, text="Move up", command=lambda: self.move_file(-1)).grid(row=2, column=1, pady=(10, 0), padx=5)
                 ttk.Button(panel, text="Move down", command=lambda: self.move_file(1)).grid(row=2, column=2, pady=(10, 0), padx=5)
@@ -450,6 +526,9 @@ class PDFStudio(tk.Tk):
         options = self._panel(options_row, "Options")
         options.columnconfigure(1, weight=1)
         self._tool_options(options, key)
+        if key not in ("merge", "images_to_pdf", "qr"):
+            mode = self._combo(options, 10, "Processing", "mode", ("Single file", "Batch"))
+            mode.bind("<<ComboboxSelected>>", lambda _event: self.output_var.set(self.suggest_output() if self.files else ""))
 
         output = self._panel(options_row + 1, "Output")
         output.columnconfigure(0, weight=1)
@@ -458,6 +537,8 @@ class PDFStudio(tk.Tk):
         ttk.Button(output, text="Browse", command=self.choose_output).grid(row=1, column=1, padx=(10, 0))
         self.run_button = ttk.Button(output, text=f"Run {TOOLS[key][0]}", style="Accent.TButton", command=self.run_tool)
         self.run_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(14, 0))
+        if key in ("compress", "image_compress"):
+            ttk.Button(output, text="Estimate size", command=lambda: self.run_tool(estimate=True)).grid(row=3, column=0, columnspan=2, pady=(8, 0))
 
     def _label_entry(self, frame, row, label, name, value="", secret=False):
         ttk.Label(frame, text=label, style="Panel.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 12), pady=5)
@@ -487,11 +568,13 @@ class PDFStudio(tk.Tk):
                 frame, 1, "Quality", "quality",
                 ("Lossless optimization", "Balanced", "Smallest file"), "Balanced"
             )
-            ttk.Label(
-                frame,
-                text="Built-in compression. Balanced and Smallest recompress embedded images.",
-                style="Panel.TLabel", foreground=MUTED,
-            ).grid(row=2, column=1, sticky="w")
+        elif key in IMAGE_TOOLS:
+            self._combo(frame, 1, "Output format", "format", IMAGE_FORMATS, "JPG" if key == "image_compress" else "PNG")
+            if key == "image_compress":
+                self._compression_options(frame, 2)
+            elif key == "image_upscale":
+                self._combo(frame, 2, "Scale", "scale", ("2x", "3x"), "3x")
+                self._combo(frame, 3, "Method", "engine", ("AI reconstruction", "Lanczos"))
         elif key == "protect":
             self._label_entry(frame, 1, "Open password", "password", secret=True)
             self._label_entry(frame, 2, "Owner password", "owner", secret=True)
@@ -534,10 +617,16 @@ class PDFStudio(tk.Tk):
         else:
             ttk.Label(frame, text="Files will be combined in the order shown above.", style="Panel.TLabel", foreground=MUTED).grid(row=1, column=0, columnspan=2, sticky="w")
 
+    def _compression_options(self, frame, row):
+        self._combo(frame, row, "Compression", "compression", ("Quality preset", "Target size", "2x", "4x", "8x"))
+        self._label_entry(frame, row + 1, "Target size", "target", "100")
+        self._combo(frame, row + 2, "Unit", "unit", ("KB", "MB"))
+
     def choose_files(self, multiple):
-        images = self.current_tool == "images_to_pdf"
-        types = [("Images", "*.png *.jpg *.jpeg *.tif *.tiff *.bmp")] if images else [("PDF files", "*.pdf")]
+        images = self.current_tool == "images_to_pdf" or self.current_tool in IMAGE_TOOLS
+        types = [("Images", "*.png *.jpg *.jpeg *.tif *.tiff *.bmp *.gif")] if images else [("PDF files", "*.pdf")]
         paths = filedialog.askopenfilenames(title="Choose files", filetypes=types) if multiple else [filedialog.askopenfilename(title="Choose file", filetypes=types)]
+        if not multiple and any(paths): self.files = []
         for path in paths:
             if path and path not in self.files:
                 self.files.append(path)
@@ -575,6 +664,10 @@ class PDFStudio(tk.Tk):
     def suggest_output(self):
         source = self.files[0]
         key = self.current_tool
+        if self.vars.get("mode") and self.vars["mode"].get() == "Batch":
+            return str(Path(source).with_name(f"rabpdf_{key}_batch"))
+        if key in IMAGE_TOOLS:
+            return default_output(source, key, image_extension({k: v.get() for k, v in self.vars.items()}))
         if key in ("split", "pdf_to_images", "images"):
             return str(Path(source).with_name(f"{Path(source).stem}_{key}"))
         if key == "text":
@@ -585,10 +678,13 @@ class PDFStudio(tk.Tk):
 
     def choose_output(self):
         folder_tools = ("split", "pdf_to_images", "images")
-        if self.current_tool in folder_tools:
+        if self.current_tool in folder_tools or (self.vars.get("mode") and self.vars["mode"].get() == "Batch"):
             path = filedialog.askdirectory(title="Choose output folder")
         else:
-            if self.current_tool == "text":
+            if self.current_tool in IMAGE_TOOLS:
+                ext = image_extension({k: v.get() for k, v in self.vars.items()})
+                types = [("Image", "*" + ext)]
+            elif self.current_tool == "text":
                 ext, types = ".txt", [("Text", "*.txt")]
             elif self.current_tool == "qr":
                 ext, types = ".png", [("PNG image", "*.png")]
@@ -598,17 +694,21 @@ class PDFStudio(tk.Tk):
         if path:
             self.output_var.set(path)
 
-    def run_tool(self):
+    def run_tool(self, estimate=False):
+        if self.busy: return
         try:
             if self.current_tool != "qr" and not self.files:
                 raise ValueError("Choose at least one input file.")
-            if self.current_tool not in ("merge", "images_to_pdf", "qr") and len(self.files) != 1:
+            if self.current_tool not in ("merge", "images_to_pdf", "qr") and self.vars["mode"].get() != "Batch" and len(self.files) != 1:
                 raise ValueError("This tool accepts one input file.")
             output = self.output_var.get().strip()
-            if not output:
+            if self.current_tool in IMAGE_TOOLS and self.vars["mode"].get() != "Batch" and output:
+                output = str(Path(output).with_suffix(image_extension({k: v.get() for k, v in self.vars.items()})))
+                self.output_var.set(output)
+            if not output and not estimate:
                 raise ValueError("Choose an output location.")
-            input_abs = {os.path.abspath(path) for path in self.files}
-            if os.path.abspath(output) in input_abs:
+            input_abs = {os.path.normcase(os.path.abspath(path)) for path in self.files}
+            if os.path.normcase(os.path.abspath(output)) in input_abs:
                 raise ValueError("The output must be different from the input file.")
         except ValueError as exc:
             messagebox.showerror(APP_NAME, str(exc))
@@ -619,16 +719,39 @@ class PDFStudio(tk.Tk):
         self.status_badge.configure(text="WORKING", bg=ACCENT_SOFT, fg=ACCENT_DARK)
         self.status_var.set(f"Running {TOOLS[self.current_tool][0]}...")
         settings = {name: value.get() for name, value in self.vars.items()}
-        threading.Thread(target=self._worker, args=(self.current_tool, list(self.files), output, settings), daemon=True).start()
+        threading.Thread(target=self._worker, args=(self.current_tool, list(self.files), output, settings, estimate), daemon=True).start()
 
-    def _worker(self, tool, files, output, settings):
+    def _worker(self, tool, files, output, settings, estimate=False):
+        preview = tempfile.mkdtemp(prefix="rabpdf_preview_") if estimate else None
         try:
-            if tool not in ("compress", "qr"):
+            if preview:
+                ext = image_extension(settings) if tool in IMAGE_TOOLS else ".pdf"
+                output = str(Path(preview) / ("batch" if settings.get("mode") == "Batch" else "preview" + ext))
+            if tool not in (*IMAGE_TOOLS, "qr"):
                 require_pdf_libs()
-            result = getattr(self, f"do_{tool}")(files, output, settings)
+            if settings.get("mode") == "Batch":
+                folder = Path(output)
+                folder.mkdir(parents=True, exist_ok=True)
+                messages = []
+                for index, source in enumerate(files):
+                    ext = image_extension(settings) if tool in IMAGE_TOOLS else ".txt" if tool == "text" else ".pdf"
+                    target = folder / f"{index + 1:03d}_{Path(source).stem}_{tool}{ext}"
+                    if tool in ("split", "images", "pdf_to_images"): target = target.with_suffix("")
+                    if target.exists(): raise ValueError(f"Output already exists: {target.name}. Choose a new folder.")
+                    messages.append(getattr(self, f"do_{tool}")([source], str(target), settings))
+                result = "\n".join(messages)
+            else:
+                result = getattr(self, f"do_{tool}")(files, output, settings)
+            if preview:
+                total = sum(p.stat().st_size for p in Path(preview).rglob("*") if p.is_file())
+                result = f"Input: {human_size(sum(os.path.getsize(p) for p in files))}\nEstimated output: {human_size(total)}\nPreview only; no output saved."
             self.after(0, self._finished, True, result)
         except Exception as exc:
             self.after(0, self._finished, False, str(exc))
+        finally:
+            if preview:
+                import shutil
+                shutil.rmtree(preview, ignore_errors=True)
 
     def _finished(self, success, message):
         self.busy = False
@@ -649,6 +772,52 @@ class PDFStudio(tk.Tk):
             if not password or reader.decrypt(password) == 0:
                 raise ValueError("The PDF is encrypted. Enter the correct password using Unlock PDF first.")
         return reader
+
+    def do_image_convert(self, files, output, settings):
+        from PIL import Image, ImageOps
+        with Image.open(files[0]) as source:
+            if getattr(source, "n_frames", 1) != 1:
+                raise ValueError("Animated or multipage images are not supported by this image tool.")
+            image = ImageOps.exif_transpose(source).convert("RGBA")
+        data = encode_image(image, settings.get("format", "PNG"))
+        Path(output).write_bytes(data)
+        return f"Saved {Path(output).name}: {human_size(len(data))}."
+
+    def do_image_upscale(self, files, output, settings):
+        from PIL import Image, ImageOps
+        scale = int(settings.get("scale", "2x")[:-1])
+        if scale not in (2, 3): raise ValueError("Choose 2x or 3x.")
+        with Image.open(files[0]) as source:
+            if getattr(source, "n_frames", 1) != 1: raise ValueError("Use a single-frame image.")
+            image = ImageOps.exif_transpose(source).convert("RGBA")
+        width, height = image.width * scale, image.height * scale
+        if width * height > 12000000: raise ValueError("Upscaled image exceeds 12 million pixels. Choose a smaller scale.")
+        method = settings.get("engine", "AI reconstruction")
+        image = ai_upscale(image, scale) if method == "AI reconstruction" else image.resize((width, height), Image.Resampling.LANCZOS)
+        Path(output).write_bytes(encode_image(image, settings.get("format", "PNG")))
+        return f"Saved {width} x {height} pixels using {method}."
+
+    def do_image_compress(self, files, output, settings):
+        from PIL import Image, ImageOps
+        with Image.open(files[0]) as source:
+            if getattr(source, "n_frames", 1) != 1: raise ValueError("Use a single-frame image.")
+            image = ImageOps.exif_transpose(source).convert("RGBA")
+        target = compression_target(settings, os.path.getsize(files[0]))
+        format_name = settings.get("format", "JPG")
+        best = encode_image(image, format_name, 80)
+        if target:
+            for step in range(24):
+                for quality in ((90, 75, 60, 40, 20) if format_name == "JPG" else (80,)):
+                    data = encode_image(image, format_name, quality)
+                    if len(data) < len(best): best = data
+                    if len(best) <= target: break
+                if len(best) <= target: break
+                if image.width == 1 and image.height == 1: break
+                image = image.resize((max(1, int(image.width * .75)), max(1, int(image.height * .75))), Image.Resampling.LANCZOS)
+            if len(best) > target:
+                raise ValueError(f"Could not reach {human_size(target)}. Smallest preview: {human_size(len(best))}; no output saved.")
+        Path(output).write_bytes(best)
+        return f"Input: {human_size(os.path.getsize(files[0]))}; output: {human_size(len(best))}."
 
     def do_merge(self, files, output, _settings):
         from pypdf import PdfWriter
@@ -981,10 +1150,51 @@ def packaged_self_test():
         writer.close()
         if not PdfReader(encrypted).is_encrypted:
             raise RuntimeError("Encryption self-test failed")
+        tiny = Path(folder) / "tiny.png"
+        PillowImage.new("RGBA", (8, 8), (80, 120, 160, 200)).save(tiny)
+        upscale = Path(folder) / "upscaled.png"
+        app.do_image_upscale([str(tiny)], str(upscale), {"scale": "3x", "format": "PNG", "engine": "AI reconstruction"})
+        with PillowImage.open(upscale) as image:
+            if image.size != (24, 24): raise RuntimeError("AI model self-test failed")
 
+
+def launch_app():
+    if os.name != "nt":
+        PDFStudio().mainloop()
+        return
+    import ctypes
+    from ctypes import wintypes
+    api = ctypes.WinDLL("kernel32", use_last_error=True)
+    api.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    api.CreateMutexW.restype = wintypes.HANDLE
+    api.CreateEventW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
+    api.CreateEventW.restype = wintypes.HANDLE
+    api.SetEvent.argtypes = [wintypes.HANDLE]
+    api.CloseHandle.argtypes = [wintypes.HANDLE]
+    api.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    event = api.CreateEventW(None, False, False, "Local\\RabPDF.Activate")
+    mutex = api.CreateMutexW(None, False, "Local\\RabPDF.Instance")
+    existing = ctypes.get_last_error() == 183
+    if not event or not mutex: raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        if existing:
+            api.SetEvent(event)
+            return
+        app = PDFStudio()
+        def activate():
+            if api.WaitForSingleObject(event, 0) == 0:
+                app.deiconify(); app.lift()
+                app.attributes("-topmost", True)
+                app.after(100, lambda: app.attributes("-topmost", False))
+                app.focus_force()
+            app.after(150, activate)
+        app.after(150, activate)
+        app.mainloop()
+    finally:
+        api.CloseHandle(mutex); api.CloseHandle(event)
 
 if __name__ == "__main__":
     if "--self-test" in sys.argv:
         packaged_self_test()
     else:
-        PDFStudio().mainloop()
+        launch_app()

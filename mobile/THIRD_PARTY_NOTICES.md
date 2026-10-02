@@ -21,3 +21,12 @@ third-party licenses.
 
 The bundled Python wheels contain their package metadata and license files.
 The `pnpm-lock.yaml` records the JavaScript dependency versions.
+
+ONNX Runtime (desktop CPU and optional web WASM inference): MIT,
+https://github.com/microsoft/onnxruntime
+ESPCN model from ONNX Model Zoo: Apache-2.0; included license at
+assets/ONNX-ModelZoo-LICENSE.txt. Source model:
+https://github.com/onnx/models/tree/main/validated/vision/super_resolution/sub_pixel_cnn_2016
+Only obsolete initializer-as-input graph metadata was removed; pretrained
+weights were not changed. This small model was selected instead of GAN-based
+generation to prioritize source-image reconstruction.

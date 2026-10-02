@@ -22,8 +22,8 @@ from rabpdf import (  # noqa: E402
 
 class RabPDFToolsTest(unittest.TestCase):
     def test_official_credit_is_embedded(self):
-        self.assertEqual(APP_VERSION, "1.3.2")
-        self.assertEqual(APP_AUTHORS, "Nishan Chettri + ChatGPT 5.6 Sol Light")
+        self.assertEqual(APP_VERSION, "1.4.0")
+        self.assertEqual(APP_AUTHORS, "Nishan Chettri + ChatGPT")
         self.assertEqual(APP_WEBSITE, "https://nishanchettri.com")
 
     def setUp(self):
@@ -52,6 +52,37 @@ class RabPDFToolsTest(unittest.TestCase):
 
     def assert_pdf_pages(self, path, expected):
         self.assertEqual(len(PdfReader(path).pages), expected)
+
+    def test_new_image_tools(self):
+        source = self.folder / "source.png"
+        Image.effect_noise((400, 300), 80).convert("RGB").save(source)
+        for format_name, suffix in (("PNG", "png"), ("JPG", "jpg"), ("BMP", "bmp"), ("TIFF", "tiff"), ("GIF", "gif")):
+            output = self.folder / ("converted." + suffix)
+            self.app.do_image_convert([source], output, {"format": format_name})
+            with Image.open(output) as image:
+                self.assertEqual(image.size, (400, 300))
+        upscaled = self.folder / "upscaled.png"
+        self.app.do_image_upscale([source], upscaled, {"scale": "2x", "format": "PNG", "engine": "Lanczos"})
+        with Image.open(upscaled) as image: self.assertEqual(image.size, (800, 600))
+        for mode in ("2x", "4x", "8x", "Target size"):
+            output = self.folder / (mode.replace(" ", "_") + ".jpg")
+            settings = {"compression": mode, "target": "10", "unit": "KB", "format": "JPG"}
+            self.app.do_image_compress([source], output, settings)
+            target = 10 * 1024 if mode == "Target size" else source.stat().st_size // int(mode[:-1])
+            self.assertLessEqual(output.stat().st_size, target)
+        output = self.folder / "impossible.jpg"
+        with self.assertRaises(ValueError):
+            self.app.do_image_compress([source], output, {"compression": "Target size", "target": "0.001", "unit": "KB", "format": "JPG"})
+        self.assertFalse(output.exists())
+
+    def test_ai_upscale_preserves_dimensions_and_alpha(self):
+        source = self.folder / "alpha.png"
+        Image.new("RGBA", (12, 10), (50, 100, 150, 180)).save(source)
+        output = self.folder / "ai.png"
+        self.app.do_image_upscale([source], output, {"scale": "3x", "format": "PNG", "engine": "AI reconstruction"})
+        with Image.open(output) as image:
+            self.assertEqual(image.size, (36, 30))
+            self.assertEqual(image.getchannel("A").getextrema(), (180, 180))
 
     def test_qr_generator(self):
         output = self.folder / "qr.png"

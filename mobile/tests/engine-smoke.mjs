@@ -51,11 +51,18 @@ assert 'Page 1' in PdfReader('/test/numbered.pdf').pages[0].extract_text()
 app.do_metadata(files,'/test/meta.pdf',{'title':'Mobile','author':'Nishan','subject':'Test','keywords':'pdf'})
 assert PdfReader('/test/meta.pdf').metadata.title=='Mobile'
 Image.new('RGB',(120,80),'blue').save('/test/image.png')
+app.do_image_convert(['/test/image.png'],'/test/converted.jpg',{'format':'JPG'})
+assert Image.open('/test/converted.jpg').format=='JPEG'
+app.do_image_upscale(['/test/image.png'],'/test/upscaled.png',{'format':'PNG','scale':'2x','engine':'Lanczos'})
+assert Image.open('/test/upscaled.png').size==(240,160)
+app.do_image_compress(['/test/image.png'],'/test/compressed.jpg',{'format':'JPG','compression':'Target size','target':'1','unit':'KB'})
+assert os.path.getsize('/test/compressed.jpg')<=1024
 app.do_images_to_pdf(['/test/image.png'],'/test/image.pdf',{'fit':'Fit image','page_size':'A4'})
 check_pages('/test/image.pdf',1)
 app.do_images(['/test/image.pdf'],'/test/images',{})
 assert list(Path('/test/images').iterdir())
-print('All 14 Python-backed mobile tools passed in the offline WebAssembly engine')
+print('All 17 Python-backed mobile tools passed in the offline WebAssembly engine')
 `);
 await mkdir('.test-fixtures',{recursive:true});
 await writeFile('.test-fixtures/source.pdf',py.FS.readFile('/test/source.pdf'));
+await writeFile('.test-fixtures/image.png',py.FS.readFile('/test/image.png'));

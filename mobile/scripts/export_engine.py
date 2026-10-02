@@ -5,7 +5,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[2]
 source = ast.parse((root / "src/rabpdf.py").read_text(encoding="utf-8"))
-functions = {"human_size", "parse_pages", "parse_ranges"}
+functions = {"human_size", "parse_pages", "parse_ranges", "compression_target", "image_extension", "encode_image"}
 methods = {"_reader", "_overlay"}
 module = ast.parse("import io\nimport os\nfrom pathlib import Path\n")
 for item in source.body:
