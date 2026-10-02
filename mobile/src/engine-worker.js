@@ -26,7 +26,7 @@ self.onmessage = async ({data}) => {
     const messages=[];
     for(const [index, inputs] of jobs.entries()) {
       const folder = ['split','images'].includes(tool);
-      const ext=tool.startsWith('image_')?({JPG:'jpg',PNG:'png',BMP:'bmp',TIFF:'tiff',GIF:'gif'}[settings.format]||'png'):tool==='text'?'txt':'pdf';
+      const ext=tool==='book_flatten'?'png':tool.startsWith('image_')?({JPG:'jpg',PNG:'png',BMP:'bmp',TIFF:'tiff',GIF:'gif'}[settings.format]||'png'):tool==='text'?'txt':'pdf';
       const name=`${index+1}_rabpdf_${tool}`;
       const output = folder ? `/job/output/${name}` : `/job/output/${name}.${ext}`;
       engine.globals.set('_job_json', JSON.stringify({tool,paths:inputs,output,settings}));

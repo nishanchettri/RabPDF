@@ -18,7 +18,15 @@ export const tools = [
   ['image_compress','Compress image','Image tools','minimize-2'],
   ['image_upscale','Upscale image','Image tools','maximize-2'],
   ['image_convert','Convert image','Image tools','image'],
+  ['scan_document','Document scan','Scan tools','scan-line'],
+  ['scan_id','ID card scan','Scan tools','id-card'],
+  ['scan_book','Book scan','Scan tools','book-open'],
+  ['scan_qr','QR code scan','Scan tools','scan-qr-code'],
+  ['sign_pdf','Sign PDF','PDF tools','pen-tool'],
+  ['reorder_pages','Page reorder','PDF tools','layers'],
 ];
+export const studioTools = ['scan_document','scan_id','scan_book','scan_qr','sign_pdf','reorder_pages'];
+export const toolGroup = key => key.startsWith('scan_') ? 'Scan tools' : key.startsWith('image_') ? 'Image tools' : 'PDF tools';
 export const fields = {
   split: [['ranges','Ranges','text','']],
   extract: [['pages','Pages','text','1']],

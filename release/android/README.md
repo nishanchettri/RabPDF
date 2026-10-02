@@ -1,13 +1,16 @@
-# Android 0.3.1 preview
+# Android 0.4.0 preview
 
 All tools are free with no trial, payment, or subscription.
 
-- RabPDF-Android-0.3.1-TestAds.apk: install for phone testing; Google's test banner.
-- RabPDF-Android-0.3.1-LiveAds.aab: signed bundle with publisher IDs, for Play
+- RabPDF-Android-0.4.0-TestAds.apk: install for phone testing; Google's test banner.
+- RabPDF-Android-0.4.0-LiveAds.aab: signed bundle with publisher IDs, for Play
   upload only after consent configuration, privacy declarations, and phone QA.
 
 No real Android-device ad/consent test has been performed yet. A successful
 build and desktop-browser PDF test do not establish production readiness.
+Camera capture, scanner-module download, content-provider saving, and file
+opening also require real-phone QA. Manual curved-book correction is a
+limited model, not automatic 3D dewarping. See ../../mobile/SCANNING.md.
 Do not use live ads for testing or click your own live ads.
 
 The older 0.1.0 build had an expiring trial. Upgrade to this version to remove it.

@@ -1,6 +1,6 @@
 # RabPDF for Android
 
-Android preview 0.3.1. All tools are permanently free, with no trial or payments.
+Android preview 0.4.0. All tools are permanently free, with no trial or payments.
 PDF processing works offline. Optional AdMob ads use the network separately.
 
 All 19 desktop tools are implemented: page operations, compression, AES-256
@@ -12,6 +12,24 @@ renders PDF pages. Output files can be saved through Android's document picker
 or shared with another app. No account or document uploads are required.
 Ads are optional at build time; see ADS_SETUP.md. Opening the author website or choosing another app
 in the Android share sheet is an explicit user action.
+
+## Scanning and editing
+
+The Scan tools group includes Document scan, ID card scan, Book scan, and QR
+code scan. PDF tools now include visual signing and drag-to-reorder pages.
+See [SCANNING.md](SCANNING.md) for supported workflows, limitations, and the
+manual curved-page flattening model.
+
+Native camera scanning uses Google Play services. Its scanner module may
+require an Internet download on first use, and document scanning requires
+at least 1.7 GB device RAM. Processing is on-device once available; Google
+does not supply a universally available, fully bundled camera scanner here.
+Gallery imports, image edits, signing, and reordering do not require that
+scanner module. The user does not install development packages.
+
+Saved files show their document-provider location when available, with Open
+file and Browse files actions. The five most recent save receipts are retained
+on-device; Clear list removes only those receipts, not the saved documents.
 
 ## Development
 
@@ -44,8 +62,9 @@ signed using your private upload key before submission to Google Play.
 
 ## Verification and limits
 
-PDF tools and Image tools have collapsible menus. QR is available only through
-the header shortcut. Independent operations support Single file or Batch; merge
+Scan tools, PDF tools and Image tools have collapsible menus. QR generation is
+available only through the header shortcut; QR scanning is in Scan tools.
+Independent operations support Single file or Batch; merge
 and Images to PDF intentionally combine their input files. Batch exports with
 multiple results use a ZIP.
 
@@ -65,7 +84,8 @@ diffusion redraw and cannot guarantee true missing detail. AI intermediate size
 is limited to 12 million pixels. CPU speed depends on the phone.
 
 The previous trial and planned paid unlock have been removed. No ad view,
-consent choice, ad availability, payment, or network connection gates tools.
+consent choice, ad availability, or payment gates tools. Camera SDK availability
+and its first-use download can affect scanning; imported-file tools are local.
 Default builds exclude advertising SDKs. Test and live ad modes are documented
 in ADS_SETUP.md. Desktop remains free and ad-free.
 

@@ -12,7 +12,8 @@ Windows may show an unknown-publisher warning because the executable is not comm
 
 Version 1.4.1 refines navigation with chevron icons, clearer selection states,
 single/batch controls, mouse-wheel scrolling, and a content-sized About window.
-Android 0.3.1 includes matching navigation and larger touch targets.
+Android 0.4.0 adds a dedicated Scan tools group while keeping the matching
+navigation and larger touch targets. The Windows release is unchanged.
 
 For faster startup, use `release/RabPDF-FastStart.zip`: extract the entire folder
 and run `RabPDF/RabPDF.exe`. Keep its `_internal` folder beside the EXE, and pin
@@ -44,8 +45,13 @@ See mobile/README.md for format, size, and memory limits shared by both apps.
 
 ## Android preview
 
-The Android source is in [`mobile/`](mobile/README.md). It implements all 16
-tools with local processing. Preview APK and signed App Bundle files are in
+The Android source is in [`mobile/`](mobile/README.md). It includes PDF and
+image processing plus document, ID, book and QR scanning, visual signatures,
+and drag-to-reorder pages. Book flattening uses manual curve adjustments,
+not automatic reconstruction of arbitrary curved pages. See
+[`Scanner details and limits`](mobile/SCANNING.md).
+Google's native scanner modules can require an initial network download;
+subsequent image processing stays on-device. Preview APK and signed App Bundle files are in
 [`release/android/`](release/android/). Test on real devices before publishing.
 All tools are permanently free. There is no trial, payment, or subscription.
 Optional home-screen AdMob banners support Android development; see
@@ -113,7 +119,7 @@ Every push and pull request runs tests and builds a Windows executable. Open the
 .venv\Scripts\python -m unittest discover -s tests -v
 ```
 
-The tests create disposable PDFs and verify page operations, encryption, rendering, compression, extraction, overlays, and metadata.
+The tests create disposable PDFs and verify page operations, encryption, rendering, compression, extraction, overlays, metadata, and the manual book-curve transform. Mobile PDF/QR tests run with `node --test --test-isolation=none mobile/tests/*.test.mjs` after installing the mobile developer dependencies.
 
 ## Project layout
 

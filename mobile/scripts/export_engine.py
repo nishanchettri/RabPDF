@@ -20,7 +20,8 @@ for item in source.body:
         module.body.append(item)
 public = root / "mobile/public"
 public.mkdir(parents=True, exist_ok=True)
-(public / "pdf_engine.py").write_text(ast.unparse(module) + "\n", encoding="utf-8")
+scan_source = (root / "mobile/src/scan_engine.py").read_text(encoding="utf-8")
+(public / "pdf_engine.py").write_text(ast.unparse(module) + "\n" + scan_source + "\nPDFEngine.do_book_flatten = do_book_flatten\n", encoding="utf-8")
 shutil.copytree(root / "assets", public / "brand", dirs_exist_ok=True)
 print("Exported desktop PDF engine and brand assets")
 

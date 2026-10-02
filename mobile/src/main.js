@@ -2,28 +2,31 @@ import './style.css';
 import {createIcons, Files, Scissors, Copy, Trash2, RotateCw, Minimize2,
   Lock, LockOpen, Image, Images, Text, ImageDown, Stamp, ListOrdered,
   FilePen, QrCode, Maximize2, ShieldCheck, ChevronDown, ChevronRight,
-  PanelLeft, ArrowLeft, ArrowUp, ArrowDown, Plus, X, Share2, Scale, File, Play} from 'lucide';
+  PanelLeft, ArrowLeft, ArrowUp, ArrowDown, Plus, X, Share2, Scale, File, Play,
+  ScanLine, IdCard, BookOpen, ScanQrCode, PenTool, Layers, ExternalLink, FolderOpen} from 'lucide';
 import {Capacitor, registerPlugin} from '@capacitor/core';
 import {Filesystem, Directory} from '@capacitor/filesystem';
 import {Share} from '@capacitor/share';
+import {App} from '@capacitor/app';
 import QRCode from 'qrcode';
 import JSZip from 'jszip';
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import engineWorker from './engine-worker.js?url';
 import aiWorkerURL from './ai-worker.js?url';
-import {tools, fields, parsePages} from './tools.js';
+import {tools, fields, parsePages, studioTools, toolGroup} from './tools.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 let selected = null, files = [], outputs = [], busy = false, worker = null, sequence = 0;
 let pendingReject = null;
 let batchMode = false;
 let aiWorker = null;
+let studioCleanup, renderToken = 0, toolDirty = false;
 const app = document.querySelector('#app');
 const icons = {Files, Scissors, Copy, Trash2, RotateCw, Minimize2, Lock, LockOpen,
   Image, Images, Text, ImageDown, Stamp, ListOrdered, FilePen, QrCode, Maximize2,
   ShieldCheck, ChevronDown, ChevronRight, PanelLeft, ArrowLeft, ArrowUp, ArrowDown,
-  Plus, X, Share2, Scale, File, Play};
+  Plus, X, Share2, Scale, File, Play, ScanLine, IdCard, BookOpen, ScanQrCode, PenTool, Layers, ExternalLink, FolderOpen};
 const SaveFile = registerPlugin('SaveFile');
 const Ads = registerPlugin('Ads');
 let adsReady = false;
@@ -42,14 +45,19 @@ function fileSize(bytes) {
   return `${(bytes/1024/1024).toFixed(1)} MB`;
 }
 function glyph(name) { return `<i data-lucide="${name}"></i>`; }
+function mayLeave() { return !toolDirty || window.confirm('Discard unsaved changes?'); }
+function goHome() { if(!busy && mayLeave()){selected=null;files=[];outputs=[];toolDirty=false;render();} }
+function lockUI(value){busy=value;document.querySelectorAll('button,input,select').forEach(e=>{if(value){e.dataset.wasDisabled=String(e.disabled);e.disabled=true;}else if('wasDisabled' in e.dataset){e.disabled=e.dataset.wasDisabled==='true';delete e.dataset.wasDisabled;}});}
 function render() {
-  app.innerHTML = `<header><button class="brand" id="home"><img src="/brand/rabpdf_mascot_animated.gif" alt="Rabbit"><span>RabPDF</span></button><div class="header-actions"><button id="qr" class="quiet">${glyph('qr-code')}<span>Link to QR</span></button><span class="offline">${glyph('shield-check')}<span>Offline</span></span></div></header><main id="main"></main><footer><a href="https://nishanchettri.com" target="_blank" rel="noopener">Nishan Chettri</a><span> + ChatGPT</span><span class="version">Android preview 0.3.1</span></footer>`;
-  document.querySelector('#home').onclick=()=>{if(!busy) {selected=null;files=[];outputs=[];render();}};
+  studioCleanup?.();studioCleanup=null;
+  const token=++renderToken;
+  app.innerHTML = `<header><button class="brand" id="home"><img src="/brand/rabpdf_mascot_animated.gif" alt="Rabbit"><span>RabPDF</span></button><div class="header-actions"><button id="qr" class="quiet">${glyph('qr-code')}<span>Link to QR</span></button><span class="offline">${glyph('shield-check')}<span>On-device</span></span></div></header><main id="main"></main><footer><a href="https://nishanchettri.com" target="_blank" rel="noopener">Nishan Chettri</a><span> + ChatGPT</span><span class="version">Android preview 0.4.0</span></footer>`;
+  document.querySelector('#home').onclick=goHome;
   document.querySelector('#qr').onclick=()=>{if(!busy) open('qr');};
   const main=document.querySelector('#main');
   const navigation=document.createElement('nav');navigation.id='tool-navigation';navigation.hidden=true;
   navigation.setAttribute('aria-label','Tools');
-  navigation.innerHTML=['PDF tools','Image tools'].map(group=>`<details open><summary><span>${group}</span>${glyph('chevron-down')}</summary>${tools.filter(t=>t[0]!=='qr' && t[0].startsWith('image_')===(group==='Image tools')).map(t=>`<button type="button" data-nav="${t[0]}" ${selected===t[0]?'aria-current="page"':''}>${glyph(t[3])}<span>${t[1]}</span></button>`).join('')}</details>`).join('');
+  navigation.innerHTML=['Scan tools','PDF tools','Image tools'].map(group=>`<details open><summary><span>${group}</span>${glyph('chevron-down')}</summary>${tools.filter(t=>t[0]!=='qr' && toolGroup(t[0])===group).map(t=>`<button type="button" data-nav="${t[0]}" ${selected===t[0]?'aria-current="page"':''}>${glyph(t[3])}<span>${t[1]}</span></button>`).join('')}</details>`).join('');
   document.querySelector('header').after(navigation);
   navigation.querySelectorAll('[data-nav]').forEach(button=>button.onclick=()=>{if(!busy)open(button.dataset.nav);});
   const menu=document.createElement('button');menu.className='quiet';menu.setAttribute('aria-label','Tools menu');menu.setAttribute('aria-expanded','false');
@@ -59,12 +67,23 @@ function render() {
   document.querySelector('.header-actions').prepend(menu);
   if(!selected) {
     main.innerHTML='<h1>Your PDF workspace</h1>';
-    for(const group of ['PDF tools','Image tools']) {
+    for(const group of ['Scan tools','PDF tools','Image tools']) {
       const section=document.createElement('section');
-      section.innerHTML=`<details open><summary><span>${group}</span>${glyph('chevron-down')}</summary><div class="tool-grid">${tools.filter(t=>t[0]!=='qr' && t[0].startsWith('image_')===(group==='Image tools')).map(t=>`<button class="tool" data-tool="${t[0]}">${glyph(t[3])}<span>${t[1]}</span>${glyph('chevron-right')}</button>`).join('')}</div></details>`;
+      section.innerHTML=`<details open><summary><span>${group}</span>${glyph('chevron-down')}</summary><div class="tool-grid">${tools.filter(t=>t[0]!=='qr' && toolGroup(t[0])===group).map(t=>`<button class="tool" data-tool="${t[0]}">${glyph(t[3])}<span>${t[1]}</span>${glyph('chevron-right')}</button>`).join('')}</div></details>`;
       main.append(section);
     }
     main.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>open(b.dataset.tool));
+    showRecent(main);
+  } else if(studioTools.includes(selected)) {
+    const tool=selected;
+    main.innerHTML='<p role="status">Opening tool...</p>';
+    import('./studio.js').then(({mountStudio})=>{
+      if(token!==renderToken)return;
+      studioCleanup=mountStudio(main,tool,{pdfjs,back:goHome,save,process:processPython,
+        lock:lockUI,
+        clearOutputs:()=>{outputs=[];toolDirty=true;document.querySelector('#save-receipt')?.remove();},
+        finish:result=>{outputs=result;toolDirty=true;showResults();}});
+    }).catch(()=>{if(token===renderToken)main.innerHTML='<p role="alert">Unable to open this tool. Restart RabPDF.</p>';});
   } else {
     const meta=tools.find(t=>t[0]===selected);
     main.innerHTML=`<button id="back" class="back" aria-label="Back">${glyph('arrow-left')}</button><span class="category">${meta[2]}</span><h1>${meta[1]}</h1><form id="form" novalidate>${selected!=='qr'?`<section><div class="section-head"><h2>Files</h2><button type="button" id="add" class="quiet">${glyph('plus')}<span>${['merge','images_to_pdf'].includes(selected)?'Add files':'Choose file'}</span></button></div><input id="picker" type="file" hidden ${['merge','images_to_pdf'].includes(selected)?'multiple':''} accept="${selected==='images_to_pdf'?'image/png,image/jpeg,image/tiff,image/bmp':'.pdf,application/pdf'}"><ul id="file-list"></ul></section>`:''}<section class="options">${(fields[selected]||[]).map(([name,label,type,value])=>`<label>${label}${Array.isArray(type)?`<select name="${name}">${type.map(v=>`<option ${v===(value||type[0])?'selected':''}>${escape(v)}</option>`).join('')}</select>`:`<input name="${name}" type="${type}" value="${escape(value||'')}" ${type==='number'?'min="1" step="1"':''} autocomplete="off">`}</label>`).join('')}</section><button class="primary" id="run" type="submit">${glyph(selected==='qr'?'qr-code':'play')}<span>${selected==='qr'?'Generate QR':'Process files'}</span></button><button id="cancel" class="quiet" type="button" hidden>${glyph('x')}<span>Cancel</span></button><p id="status" role="status" aria-live="polite"></p></form><section id="results" hidden><h2>Results</h2><div id="result-list"></div><button id="save" class="primary">${glyph('share-2')}<span>Save or share</span></button></section>`;
@@ -118,11 +137,11 @@ function render() {
   createIcons({icons});
   const footer=document.querySelector('footer');
   footer.querySelector('span').textContent=' + ChatGPT';
-  footer.querySelector('.version').textContent='Android preview 0.3.1';
+  footer.querySelector('.version').textContent='Android preview 0.4.0';
   document.querySelectorAll('button[aria-label]').forEach(button=>button.title=button.getAttribute('aria-label'));
   updateAds();
 }
-function open(tool){selected=tool;files=[];outputs=[];batchMode=false;render();}
+function open(tool){if(busy||!mayLeave())return;selected=tool;files=[];outputs=[];batchMode=false;toolDirty=false;render();}
 function updateFiles(){
   const list=document.querySelector('#file-list');
   list.innerHTML=files.map((file,i)=>`<li><div>${glyph('file')}<span>${escape(file.name)}<small>${fileSize(file.size)}</small></span></div><div class="file-actions">${['merge','images_to_pdf'].includes(selected)?`<button type="button" data-up="${i}" aria-label="Move up" ${i===0?'disabled':''}>${glyph('arrow-up')}</button><button type="button" data-down="${i}" aria-label="Move down" ${i===files.length-1?'disabled':''}>${glyph('arrow-down')}</button>`:''}<button type="button" data-remove="${i}" aria-label="Remove file">${glyph('x')}</button></div></li>`).join('');
@@ -254,6 +273,9 @@ function showResults(){
   document.querySelector('#results').hidden=false;
 }
 async function save(action='save'){
+  if(busy)return;
+  if(!outputs.length){status('No result file to save.',true);return;}
+  lockUI(true);
   try{
     let name,bytes;
     if(outputs.length===1){({name,bytes}=outputs[0]);}
@@ -265,12 +287,21 @@ async function save(action='save'){
       if(action==='save'){
         const mimeTypes={pdf:'application/pdf',png:'image/png',jpg:'image/jpeg',bmp:'image/bmp',tiff:'image/tiff',gif:'image/gif',txt:'text/plain',zip:'application/zip'};
         const result=await SaveFile.export({source:uri,name,mimeType:mimeTypes[name.split('.').pop().toLowerCase()]||'application/octet-stream'});
-        status(result.cancelled?'Save cancelled.':'File saved.');
+        if(result.cancelled)status('Save cancelled. Your result is still available.');
+        else{toolDirty=false;status(`Saved: ${result.name}`);showReceipt(result);rememberSaved(result);}
       }else await Share.share({title:'RabPDF',files:[uri],dialogTitle:'Share'});
     }else{
-      const url=URL.createObjectURL(new Blob([bytes]));const anchor=document.createElement('a');anchor.href=url;anchor.download=name;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+      const url=URL.createObjectURL(new Blob([bytes]));const anchor=document.createElement('a');anchor.href=url;anchor.download=name;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),60000);toolDirty=false;status(`Download requested: ${name}. The browser controls its destination.`);
     }
   }catch(error){status(error.message||'Unable to save the file.',true);}
+  finally{lockUI(false);}
 }
+function savedFiles(){try{const value=JSON.parse(localStorage.getItem('rabpdf-saved')||'[]');return Array.isArray(value)?value.filter(item=>typeof item.uri==='string'&&item.uri.startsWith('content://')&&typeof item.name==='string').slice(0,5):[];}catch{return [];}}
+function rememberSaved(result){try{const entries=savedFiles().filter(item=>item.uri!==result.uri);localStorage.setItem('rabpdf-saved',JSON.stringify([{uri:result.uri,name:result.name,location:result.location},...entries].slice(0,5)));}catch{/* Storage can be disabled without blocking saving. */}}
+function receiptMarkup(result){return `<div class="saved-file"><div><strong>${escape(result.name)}</strong><small>${escape(result.location||'Android-selected document location')}</small></div><div class="studio-actions"><button class="quiet" data-open>${glyph('external-link')}<span>Open file</span></button><button class="quiet" data-browse>${glyph('folder-open')}<span>Browse files</span></button></div></div>`;}
+function bindReceipt(node,result){node.querySelector('[data-open]').onclick=()=>SaveFile.open({uri:result.uri}).catch(error=>window.alert(error.message));node.querySelector('[data-browse]').onclick=()=>SaveFile.browse({uri:result.uri}).catch(error=>window.alert(error.message));}
+function showReceipt(result){document.querySelector('#save-receipt')?.remove();const section=document.createElement('section');section.id='save-receipt';section.innerHTML=receiptMarkup(result);document.querySelector('#results').append(section);bindReceipt(section,result);createIcons({icons});}
+function showRecent(main){if(!Capacitor.isNativePlatform())return;const entries=savedFiles();if(!entries.length)return;const section=document.createElement('section');section.innerHTML='<div class="section-head"><h2>Recently saved</h2><button class="quiet" id="clear-recent">Clear list</button></div>';entries.forEach(result=>{const node=document.createElement('div');node.innerHTML=receiptMarkup(result);bindReceipt(node,result);section.append(node);});section.querySelector('#clear-recent').onclick=()=>{localStorage.removeItem('rabpdf-saved');section.remove();};main.append(section);}
 render();
 initializeAds();
+if(Capacitor.isNativePlatform()) App.addListener('backButton',()=>{if(busy)return;if(selected)goHome();else App.exitApp();});

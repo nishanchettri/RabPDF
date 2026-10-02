@@ -7,6 +7,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(SaveFilePlugin.class);
+        registerPlugin(ScannerPlugin.class);
         if (BuildConfig.ADS_ENABLED) {
             try {
                 registerPlugin(Class.forName("com.nishanchettri.rabpdf.AdsPlugin").asSubclass(com.getcapacitor.Plugin.class));
